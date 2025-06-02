@@ -1,0 +1,16 @@
+.{
+    .name = .luwoco,
+    .fingerprint = 0xd97851a8d34cfa73,
+    .version = "0.0.1",
+    .dependencies = .{
+        .microzig = .{
+            .url = "https://github.com/ZigEmbeddedGroup/microzig/archive/667f75045e3cef1fe12a9ffbd56afeffc8b3250f.tar.gz",
+            .hash = "microzig-0.14.1-D20YSWP10AAdQxR4BShrHyZPbsCYGlw55d5m7vL8aE_U",
+        },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
+}
