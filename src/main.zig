@@ -42,9 +42,6 @@ const led = gpio.num(25);
 
 const i2c0 = i2c.instance.num(0);
 
-const LCD = olimex_lcd.BufferedLCD(2);
-
-var lcd: LCD = undefined;
 // var buttons: std.atomic.Value(u8) = std.atomic.Value(u8).init(0);
 
 const Event = enum(u32) {
@@ -56,26 +53,91 @@ const Event = enum(u32) {
     _,
 };
 
-const Mode = enum(u32) { Select, Backlight, _ };
+const Item = struct {
+    str: []const u8,
+    sib: []const Item = &.{},
+};
+
+const menu: Item =
+    .{
+        .str = "Worm Cook",
+        .sib = &.{
+            .{ .str = "Operation" },
+            .{
+                .str = "Ranges",
+                .sib = &.{
+                    .{ .str = "min x" },
+                    .{ .str = "max x" },
+                },
+            },
+        },
+    };
+
+fn treeSize(p: Item, i: u8) u8 {
+    var j = i;
+    for (p.sib) |s| {
+        j = treeSize(s, j);
+    }
+    return j + 1;
+}
+
+const menuSize = treeSize(menu, 0);
+
+const Ritem = struct {
+    sib_b: u8 = 0,
+    sib_e: u8 = 0,
+};
+
+var rmenu: [menuSize]Ritem = undefined;
+
+const LCD = olimex_lcd.BufferedLCD(menuSize);
+
+var lcd: LCD = undefined;
+
+fn initMenu(it: Item, idx: u8, sidx: u8) u8 {
+    var si: u8 = @intCast(sidx + it.sib.len);
+    for (it.sib, 1..) |s, i| {
+        si += initMenu(s, @intCast(idx + i), si);
+    }
+    if (it.sib.len > 0) {
+        const r = &rmenu[idx];
+        r.sib_b = idx + 1;
+        r.sib_e = @intCast(idx + 1 + it.sib.len);
+    }
+    lcd.write(idx, 2, it.str);
+    return si;
+}
+
+var dispLines: [2]u8 = .{ 0, 1 };
 
 fn core1() void {
-    var count: u8 = 0;
+    // var count: u8 = 0;
+    // var menu: Menu = .Main;
     while (true) {
         const ev: Event = @enumFromInt(fifo.read_blocking());
         switch (ev) {
             .ButtonInc => {
-                if (count < 98) count += 1;
+                if (dispLines[1] < menuSize - 1) {
+                    dispLines[0] += 1;
+                    dispLines[1] += 1;
+                }
             },
             .ButtonDec => {
-                if (count > 0) count -= 1;
+                if (dispLines[0] > 0) {
+                    dispLines[0] -= 1;
+                    dispLines[1] -= 1;
+                }
             },
             else => {
                 continue;
             },
         }
-        const d = std.fmt.digits2(count);
+        const d0 = std.fmt.digits2(dispLines[0]);
+        const d1 = std.fmt.digits2(dispLines[1]);
         // led.put(1) ;
-        lcd.write(0, 0, &d);
+        lcd.write(dispLines[0], 14, &d0);
+        lcd.write(dispLines[1], 14, &d1);
+
         // time.sleep_ms(250);
         // led.put(0);
         // lcd.write(0, 0, "ooo");
@@ -116,12 +178,16 @@ pub fn main() !void {
 
     multicore.launch_core1(core1);
     log.info("launched_core1", .{});
-    lcd.write(0, 0, "Hello Olimex Display!");
+    // lcd.write(0, 0, "Olimex Display");
+
+    // const d = std.fmt.digits2(menuSize);
+    // lcd.write(0, 1, &d);
     // microzig.cpu.wfi();
+    _ = initMenu(menu, 0, 1);
     time.sleep_ms(1000);
     while (true) {
         log.info("Print", .{});
-        if (lcd.print(.{ 0, 1 })) {} else |err| switch (err) {
+        if (lcd.print(dispLines)) {} else |err| switch (err) {
             error.IoError => log.err("IoError", .{}),
             error.Timeout => log.err("Timeout", .{}),
             error.DeviceBusy => log.err("DeviceBusy", .{}),

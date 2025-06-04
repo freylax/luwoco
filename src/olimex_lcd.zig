@@ -63,7 +63,7 @@ pub fn BufferedLCD(comptime NrOfLines: comptime_int) type {
         const WriteError = Datagram_Device.ConnectError || Datagram_Device.WriteError;
         const ReadError = Datagram_Device.ConnectError || Datagram_Device.ReadError;
 
-        pub fn print(self: *Self, lines: [2]usize) WriteError!void {
+        pub fn print(self: *Self, lines: [2]u8) WriteError!void {
             // insert the chars to print/update, all other are zero
             var toPrint: [2][Line.len]u8 = .{.{0} ** Line.len} ** 2;
             {
