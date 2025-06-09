@@ -53,44 +53,196 @@ const Event = enum(u32) {
     _,
 };
 
-const Item = struct {
+const line_len = olimex_lcd.line_len;
+const line_end = line_len - 1;
+
+const Pos = struct {
+    line: u8,
+    column: u5,
+    fn next(p: *Pos, str: []const u8) void {
+        for (str) |c| {
+            switch (c) {
+                '\n' => {
+                    p.newLine();
+                },
+                else => {
+                    if (p.column == line_end) {
+                        p.newLine();
+                    } else {
+                        p.column += 1;
+                    }
+                },
+            }
+        }
+    }
+    fn skip(p: *Pos, l: u8) void {
+        for (0..l) |_| {
+            if (p.column == line_end) {
+                p.newLine();
+            } else {
+                p.column += 1;
+            }
+        }
+    }
+    fn newLine(p: *Pos) void {
+        p.line += 1;
+        p.column = 0;
+    }
+};
+
+const ItemTag = enum(u2) {
+    column,
+    line,
+    label,
+    value,
+};
+
+const ItemTagLen = @typeInfo(ItemTag).@"enum".fields.len;
+
+const Column = struct {
     str: []const u8,
-    sib: []const Item = &.{},
+    items: []const Item,
+};
+
+const Line = struct {
+    str: []const u8,
+    items: []const Item,
+};
+
+const Label = struct {
+    str: []const u8,
+};
+
+const Value = struct {
+    size: u8,
+};
+
+const Item = union(ItemTag) {
+    column: Column,
+    line: Line,
+    label: Label,
+    value: Value,
 };
 
 const menu: Item =
     .{
-        .str = "Worm Cook",
-        .sib = &.{
-            .{ .str = "Operation" },
-            .{
-                .str = "Ranges",
-                .sib = &.{
-                    .{ .str = "min x" },
-                    .{ .str = "max x" },
-                },
-            },
+        .column = .{
+            .str = "Worm Cook",
+            .items = &.{.{ .line = Line{
+                .str = "Operation",
+                .items = &.{.{ .value = Value{ .size = 3 } }},
+            } }},
+            // .{
+            //     .str = "Ranges",
+            //     .sib = &.{
+            //         .{ .str = "min x" },
+            //         .{ .str = "max x" },
+            //     },
+            // },
         },
     };
-
-fn treeSize(p: Item, i: u8) u8 {
-    var j = i;
-    for (p.sib) |s| {
-        j = treeSize(s, j);
+fn treeSize(i: Item, count: *[ItemTagLen]u8) void {
+    switch (i) {
+        .column => |col| {
+            for (col.items) |j| {
+                treeSize(j, count);
+            }
+        },
+        .line => |line| {
+            for (line.items) |j| {
+                treeSize(j, count);
+            }
+        },
+        else => {},
     }
-    return j + 1;
+    const tag = @as(ItemTag, i);
+    count[@intFromEnum(tag)] += 1;
 }
 
-const menuSize = treeSize(menu, 0);
-
-const Ritem = struct {
-    sib_b: u8 = 0,
-    sib_e: u8 = 0,
+const nrItems = calcTreeSize: {
+    var counter = [_]u8{0} ** ItemTagLen;
+    treeSize(menu, &counter);
+    break :calcTreeSize counter;
 };
 
-var rmenu: [menuSize]Ritem = undefined;
+const totalNrItems = sumUp: {
+    var i = 0;
+    for (0..ItemTagLen) |j| {
+        i += nrItems[j];
+    }
+    break :sumUp i;
+};
 
-const LCD = olimex_lcd.BufferedLCD(menuSize);
+fn advancePos(i: Item, p: *Pos, use_lbl: bool, use_items: bool) void {
+    switch (i) {
+        .column => |c| {
+            if (use_lbl) {
+                p.next(c.str);
+            }
+            if (use_items) {
+                for (c.items) |j| {
+                    advancePos(j, p, true, false);
+                    p.newLine();
+                }
+                for (c.items) |j| {
+                    advancePos(j, p, false, true);
+                }
+            }
+        },
+        .line => |l| {
+            if (use_lbl) {
+                p.next(l.str);
+            }
+            if (use_items) {
+                for (l.items) |j| {
+                    advancePos(j, p, true, true);
+                }
+            }
+        },
+        .label => |l| {
+            if (use_lbl) p.next(l.str);
+        },
+        .value => |v| {
+            if (use_lbl) p.skip(v.size);
+        },
+    }
+}
+
+const bufferLines = calcLines: {
+    var pos = Pos{ .line = 0, .column = 0 };
+    advancePos(menu, &pos, true, true);
+    if (pos.column > 0) {
+        pos.line += 1;
+    }
+    break :calcLines pos.line;
+};
+
+// const menuSize = treeSize(menu, &treeSizeCounter);
+const RtItemTag = enum(u2) {
+    section,
+    value,
+};
+
+const RtItem = struct {
+    tag: RtItemTag,
+    pos: Pos,
+    parent: u8,
+    ptr: u8, // specific ptr into tag array
+};
+
+const RtSection = struct {
+    begin: u8,
+    end: u8,
+};
+
+const nrRtSections = nrItems[@intFromEnum(ItemTag.column)] + nrItems[@intFromEnum(ItemTag.line)];
+const nrRtValues = nrItems[@intFromEnum(ItemTag.value)];
+const nrRtItems = nrRtSections + nrRtValues;
+
+var rtItems: [nrRtItems]RtItem = undefined;
+var rtSections: [nrRtSections]RtSection = undefined;
+
+const LCD = olimex_lcd.BufferedLCD(bufferLines);
 
 var lcd: LCD = undefined;
 
@@ -132,11 +284,12 @@ fn core1() void {
                 continue;
             },
         }
-        const d0 = std.fmt.digits2(dispLines[0]);
-        const d1 = std.fmt.digits2(dispLines[1]);
+        // const m = rmenu[dispLines[0]];
+        // const d0 = std.fmt.digits2(m.sib_b);
+        // const d1 = std.fmt.digits2(m.sib_e);
         // led.put(1) ;
-        lcd.write(dispLines[0], 14, &d0);
-        lcd.write(dispLines[1], 14, &d1);
+        // lcd.write(dispLines[0], 14, &d0);
+        // lcd.write(dispLines[1], 14, &d1);
 
         // time.sleep_ms(250);
         // led.put(0);
@@ -184,9 +337,12 @@ pub fn main() !void {
     // lcd.write(0, 1, &d);
     // microzig.cpu.wfi();
     _ = initMenu(menu, 0, 1);
+    for (rmenu, 0..) |m, i| {
+        log.info("rmenu[{d}]: {d},{d}", .{ i, m.sib_b, m.sib_e });
+    }
     time.sleep_ms(1000);
     while (true) {
-        log.info("Print", .{});
+        // log.info("Print", .{});
         if (lcd.print(dispLines)) {} else |err| switch (err) {
             error.IoError => log.err("IoError", .{}),
             error.Timeout => log.err("Timeout", .{}),

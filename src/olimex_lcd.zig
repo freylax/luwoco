@@ -6,10 +6,11 @@ const Datagram_Device = microzig.drivers.base.Datagram_Device;
 const Mutex = hal.mutex.Mutex;
 const assert = std.debug.assert;
 
+pub const line_len = 16;
 pub fn BufferedLCD(comptime NrOfLines: comptime_int) type {
     assert(NrOfLines >= 2);
     const Line = struct {
-        const len = 16;
+        const len = line_len;
         buf: [len]u8 = [_]u8{' '} ** len,
         stamp: u32 = 0,
     };
