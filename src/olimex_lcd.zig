@@ -24,6 +24,9 @@ pub fn BufferedLCD(comptime NrOfLines: comptime_int) type {
         dLines: [2]usize = .{ 0, 1 }, // the actual displayed lines
         butOneShot: u4, // set the button bit for one shot buttons
         butLast: u4 = 0, // the last buttons read
+        cursorOn: bool = false,
+        cursorLine: u8 = 0,
+        cursorPos: u8 = 0,
 
         pub fn init(dd: Datagram_Device, butOneShot: u4) Self {
             return Self{
@@ -60,6 +63,18 @@ pub fn BufferedLCD(comptime NrOfLines: comptime_int) type {
             if (modified) {
                 self.buf[l].stamp += 1;
             }
+        }
+        pub fn cursorOff(self: *Self) void {
+            defer self.mx.unlock();
+            self.mx.lock();
+            self.cursorOn = false;
+        }
+        pub fn cursor(self: *Self, line: u8, pos: u8) void {
+            defer self.mx.unlock();
+            self.mx.lock();
+            self.cursorOn = true;
+            self.cursorLine = line;
+            self.cursorPos = pos;
         }
         const WriteError = Datagram_Device.ConnectError || Datagram_Device.WriteError;
         const ReadError = Datagram_Device.ConnectError || Datagram_Device.ReadError;
