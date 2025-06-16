@@ -129,20 +129,27 @@ const Item = union(ItemTag) {
     label: []const u8,
     value: Value,
 };
-
+//&[_]u8
 const menu: []const Item = &.{
-    .{ .label = &[_]u8{ 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0e, 0x0f, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2a, 0x2b, 0x2e, 0x2f, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3a, 0x3b, 0x3e, 0x3f, 0x40, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48, 0x49, 0x4a, 0x4b, 0x4e, 0x4f, 0x50, 0x51, 0x52, 0x53, 0x54, 0x55, 0x56, 0x57, 0x58, 0x59, 0x5a, 0x5b, 0x5e, 0x5f, 0x60, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68, 0x69, 0x6a, 0x6b, 0x6e, 0x6f, 0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77, 0x78, 0x79, 0x7a, 0x7b, 0x7e, 0x7f, 0x80, 0x81, 0x82, 0x83, 0x84, 0x85, 0x86, 0x87, 0x88, 0x89, 0x8a, 0x8b, 0x8e, 0x8f, 0x90, 0x91, 0x92, 0x93, 0x94, 0x95, 0x96, 0x97, 0x98, 0x99, 0x9a, 0x9b, 0x9e, 0x9f, 0xa0, 0xa1, 0xa2, 0xa3, 0xa4, 0xa5, 0xa6, 0xa7, 0xa8, 0xa9, 0xaa, 0xab, 0xae, 0xaf, 0xb0, 0xb1, 0xb2, 0xb3, 0xb4, 0xb5, 0xb6, 0xb7, 0xb8, 0xb9, 0xba, 0xbb, 0xbe, 0xbf, 0xc0, 0xc1, 0xc2, 0xc3, 0xc4, 0xc5, 0xc6, 0xc7, 0xc8, 0xc9, 0xca, 0xcb, 0xce, 0xcf, 0xd0, 0xd1, 0xd2, 0xd3, 0xd4, 0xd5, 0xd6, 0xd7, 0xd8, 0xd9, 0xda, 0xdb, 0xde, 0xdf, 0xe0, 0xe1, 0xe2, 0xe3, 0xe4, 0xe5, 0xe6, 0xe7, 0xe8, 0xe9, 0xea, 0xeb, 0xee, 0xef, 0xf0, 0xf1, 0xf2, 0xf3, 0xf4, 0xf5, 0xf6, 0xf7, 0xf8, 0xf9, 0xfa, 0xfb, 0xfe, 0xff } },
+    // .{ .label = &.{ 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0e, 0x0f, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2a, 0x2b, 0x2e, 0x2f, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3a, 0x3b, 0x3e, 0x3f, 0x40, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48, 0x49, 0x4a, 0x4b, 0x4e, 0x4f, 0x50, 0x51, 0x52, 0x53, 0x54, 0x55, 0x56, 0x57, 0x58, 0x59, 0x5a, 0x5b, 0x5e, 0x5f, 0x60, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68, 0x69, 0x6a, 0x6b, 0x6e, 0x6f, 0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77, 0x78, 0x79, 0x7a, 0x7b, 0x7e, 0x7f, 0x80, 0x81, 0x82, 0x83, 0x84, 0x85, 0x86, 0x87, 0x88, 0x89, 0x8a, 0x8b, 0x8e, 0x8f, 0x90, 0x91, 0x92, 0x93, 0x94, 0x95, 0x96, 0x97, 0x98, 0x99, 0x9a, 0x9b, 0x9e, 0x9f, 0xa0, 0xa1, 0xa2, 0xa3, 0xa4, 0xa5, 0xa6, 0xa7, 0xa8, 0xa9, 0xaa, 0xab, 0xae, 0xaf, 0xb0, 0xb1, 0xb2, 0xb3, 0xb4, 0xb5, 0xb6, 0xb7, 0xb8, 0xb9, 0xba, 0xbb, 0xbe, 0xbf, 0xc0, 0xc1, 0xc2, 0xc3, 0xc4, 0xc5, 0xc6, 0xc7, 0xc8, 0xc9, 0xca, 0xcb, 0xce, 0xcf, 0xd0, 0xd1, 0xd2, 0xd3, 0xd4, 0xd5, 0xd6, 0xd7, 0xd8, 0xd9, 0xda, 0xdb, 0xde, 0xdf, 0xe0, 0xe1, 0xe2, 0xe3, 0xe4, 0xe5, 0xe6, 0xe7, 0xe8, 0xe9, 0xea, 0xeb, 0xee, 0xef, 0xf0, 0xf1, 0xf2, 0xf3, 0xf4, 0xf5, 0xf6, 0xf7, 0xf8, 0xf9, 0xfa, 0xfb, 0xfe, 0xff } },
     // .{ .embed = .{
     //     .str = "Embed",
     //     .items = &.{ .{ .label = "aaa\n" }, .{ .label = "bbb" } },
     // } },
-    // .{ .popup = .{
-    //     .str = "Popup",
-    //     .items = &.{
-    //         .{ .label = "Label A" },
-    //         .{ .label = "Label B" },
-    //     },
-    // } },
+    .{ .popup = .{
+        .str = " Popup A\n",
+        .items = &.{
+            .{ .label = "Label A\n" },
+            .{ .label = "Label B" },
+        },
+    } },
+    .{ .popup = .{
+        .str = " Popup B\n",
+        .items = &.{
+            .{ .label = "Label C\n" },
+            .{ .label = "Label D" },
+        },
+    } },
 };
 fn treeSize(l: []const Item, count: *[ItemTagLen]u8) void {
     for (l) |i| {
@@ -230,20 +237,23 @@ const RtItem = struct {
     pos: Pos,
     parent: u8,
     ptr: u8, // specific ptr into tag array
+    len: u8, // item len on screen
 };
 
 const RtSection = struct {
     begin: u8,
     end: u8,
+    cursor: u8 = 0, // the current cursor item (down)
+    parent: u8 = 0, // parent section (up)
 };
 
-const nrRtSections = nrItems[@intFromEnum(ItemTag.popup)] + nrItems[@intFromEnum(ItemTag.embed)];
+const nrRtSections = nrItems[@intFromEnum(ItemTag.popup)] + nrItems[@intFromEnum(ItemTag.embed)] + 1;
 const nrRtValues = nrItems[@intFromEnum(ItemTag.value)];
 const nrRtLabels = nrItems[@intFromEnum(ItemTag.label)];
 const nrRtItems = nrRtSections + nrRtValues + nrRtLabels;
 
-var items: [@max(nrRtItems, 1)]RtItem = undefined;
-var sections: [@max(nrRtSections, 1)]RtSection = undefined;
+var items: [nrRtItems]RtItem = undefined;
+var sections: [nrRtSections]RtSection = undefined;
 
 const LCD = olimex_lcd.BufferedLCD(bufferLines);
 
@@ -255,7 +265,10 @@ const Idx = struct {
 
 fn initMenu() void {
     var pos = Pos{ .column = 0, .line = 0 };
-    var idx = Idx{ .item = 0, .section = 0 };
+    var idx = Idx{ .item = 1, .section = 1 };
+    // the root item
+    items[0] = .{ .tag = .section, .pos = pos, .parent = 0, .ptr = 0, .len = 0 };
+    sections[0] = .{ .begin = 1, .end = 1 + menu.len, .cursor = 1, .parent = 0 };
     initMenuR(menu, &pos, &idx, 0);
 }
 
@@ -272,28 +285,49 @@ fn initMenuHead(l: []const Item, pos: *Pos, idx: *Idx, parent: u8) void {
         switch (i) {
             .popup => |pop| {
                 lcd.write(pos.line, pos.column, pop.str);
-                items[j] = .{ .tag = .section, .pos = pos.*, .parent = parent, .ptr = idx.section };
-                sections[idx.section] = .{ .begin = 0, .end = 0 }; // this will be filled in initMenuTail
+                items[j] = .{
+                    .tag = .section,
+                    .pos = pos.*,
+                    .parent = parent,
+                    .ptr = idx.section,
+                    .len = @intCast(pop.str.len),
+                };
+                sections[idx.section] = .{
+                    .begin = 0,
+                    .end = 0,
+                    .parent = items[parent].ptr,
+                }; // this will be filled in initMenuTail
                 pos.next(pop.str);
                 idx.section += 1;
             },
             .embed => |emb| {
                 lcd.write(pos.line, pos.column, emb.str);
-                items[j] = .{ .tag = .section, .pos = pos.*, .parent = parent, .ptr = idx.section };
-                sections[idx.section] = .{ .begin = idx.item, .end = @intCast(idx.item + emb.items.len) };
+                items[j] = .{
+                    .tag = .section,
+                    .pos = pos.*,
+                    .parent = parent,
+                    .ptr = idx.section,
+                    .len = @intCast(emb.str.len),
+                };
+                sections[idx.section] = .{
+                    .begin = idx.item,
+                    .end = @intCast(idx.item + emb.items.len),
+                    .parent = items[parent].ptr,
+                    .cursor = idx.item,
+                };
                 pos.next(emb.str);
                 idx.section += 1;
                 initMenuR(emb.items, pos, idx, @intCast(j));
             },
             .label => |lbl| {
                 lcd.write(pos.line, pos.column, lbl);
-                items[j] = .{ .tag = .label, .pos = pos.*, .parent = parent, .ptr = 0 };
+                items[j] = .{ .tag = .label, .pos = pos.*, .parent = parent, .ptr = 0, .len = @intCast(lbl.len) };
                 pos.next(lbl);
             },
             .value => |val| {
                 const s = "xxxxxxxxxxxxxx";
                 lcd.write(pos.line, pos.column, s[0..val.size]);
-                items[j] = .{ .tag = .value, .pos = pos.*, .parent = parent, .ptr = 0 };
+                items[j] = .{ .tag = .value, .pos = pos.*, .parent = parent, .ptr = 0, .len = val.size };
                 pos.skip(val.size);
             },
         }
@@ -308,46 +342,100 @@ fn initMenuTail(l: []const Item, pos: *Pos, idx: *Idx, item_start: u8) void {
                 const sec: *RtSection = &sections[items[j].ptr];
                 sec.begin = idx.item;
                 sec.end = @intCast(idx.item + pop.items.len);
+                sec.cursor = idx.item;
                 initMenuR(pop.items, pos, idx, @intCast(j));
             },
             else => {},
         }
     }
 }
-// fn initMenu(it: Item, idx: u8, sidx: u8) u8 {
-//     var si: u8 = @intCast(sidx + it.sib.len);
-//     for (it.sib, 1..) |s, i| {
-//         si += initMenu(s, @intCast(idx + i), si);
-//     }
-//     if (it.sib.len > 0) {
-//         const r = &rmenu[idx];
-//         r.sib_b = idx + 1;
-//         r.sib_e = @intCast(idx + 1 + it.sib.len);
-//     }
-//     lcd.write(idx, 2, it.str);
-//     return si;
-// }
 
 var dispLines: [2]u8 = .{ 0, 1 };
+var curSection: u8 = 0;
+
+fn advanceCursor(dir: enum { left, right, down, up }) bool {
+    const sec: *RtSection = &sections[curSection];
+    switch (dir) {
+        .left => {
+            while (sec.cursor > sec.begin) {
+                sec.cursor -= 1;
+                switch (items[sec.cursor].tag) {
+                    .section, .value => {
+                        return true;
+                    },
+                    else => {},
+                }
+            }
+        },
+        .right => {
+            while (sec.cursor + 1 < sec.end) {
+                sec.cursor += 1;
+                switch (items[sec.cursor].tag) {
+                    .section, .value => {
+                        return true;
+                    },
+                    else => {},
+                }
+            }
+        },
+        .up => {
+            if (curSection > 0) {
+                curSection = sec.parent;
+                return true;
+            }
+        },
+        .down => {
+            switch (items[sec.cursor].tag) {
+                .section => {
+                    curSection = items[sec.cursor].ptr;
+                    return true;
+                },
+                else => {},
+            }
+        },
+    }
+    return false;
+}
 
 fn core1() void {
-    // var count: u8 = 0;
-    // var menu: Menu = .Main;
     while (true) {
         const ev: Event = @enumFromInt(fifo.read_blocking());
+
         switch (ev) {
-            .ButtonInc => {
-                if (dispLines[1] < bufferLines - 1) {
-                    dispLines[0] += 1;
-                    dispLines[1] += 1;
+            .ButtonInc, .ButtonDec, .ButtonEsc, .ButtonRet => {
+                if (advanceCursor(switch (ev) {
+                    .ButtonInc => .right,
+                    .ButtonDec => .left,
+                    .ButtonEsc => .up,
+                    .ButtonRet => .down,
+                    else => .up,
+                })) {
+                    const i = items[sections[curSection].cursor];
+                    // log.info("set cursor to line:{d},column:{d},len:{d}", .{ i.pos.line, i.pos.column, i.len });
+                    lcd.cursor(i.pos.line, i.pos.column, i.len);
+                    while (i.pos.line < dispLines[0]) {
+                        dispLines[0] -= 1;
+                        dispLines[1] -= 1;
+                    }
+                    while (i.pos.line > dispLines[1]) {
+                        dispLines[0] += 1;
+                        dispLines[1] += 1;
+                    }
                 }
             },
-            .ButtonDec => {
-                if (dispLines[0] > 0) {
-                    dispLines[0] -= 1;
-                    dispLines[1] -= 1;
-                }
-            },
+            //     // items[]
+            //     // items[cursorItem]
+            //     if (dispLines[1] < bufferLines - 1) {
+            //         dispLines[0] += 1;
+            //         dispLines[1] += 1;
+            //     }
+            // },
+            // .ButtonDec => {
+            //     if (dispLines[0] > 0) {
+            //         dispLines[0] -= 1;
+            //         dispLines[1] -= 1;
+            //     }
+            // },
             else => {
                 continue;
             },
@@ -409,12 +497,13 @@ pub fn main() !void {
     log.info("initMenu()", .{});
     initMenu();
     log.info("initMenu done", .{});
-    log.info("menu:\n{any}", .{menu});
-    log.info("items:\n{any}", .{items});
-    log.info("sections:\n{any}", .{sections});
+    // log.info("menu:\n{any}", .{menu});
+    // log.info("items:\n{any}", .{items});
+    // log.info("sections:\n{any}", .{sections});
     // for (rmenu, 0..) |m, i| {
     //     log.info("rmenu[{d}]: {d},{d}", .{ i, m.sib_b, m.sib_e });
     // }
+    lcd.cursor(0, 0, 8);
     time.sleep_ms(1000);
     while (true) {
         // log.info("Print", .{});

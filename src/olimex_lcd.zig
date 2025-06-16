@@ -27,6 +27,7 @@ pub fn BufferedLCD(comptime NrOfLines: comptime_int) type {
         cursorOn: bool = false,
         cursorLine: u8 = 0,
         cursorPos: u8 = 0,
+        cursorSavedChar: u8 = ' ',
 
         pub fn init(dd: Datagram_Device, butOneShot: u4) Self {
             return Self{
@@ -67,14 +68,50 @@ pub fn BufferedLCD(comptime NrOfLines: comptime_int) type {
         pub fn cursorOff(self: *Self) void {
             defer self.mx.unlock();
             self.mx.lock();
+            if (self.cursorOn) {
+                // restore the buffer
+                self.buf[self.cursorLine].buf[self.cursorPos] = self.cursorSavedChar;
+                self.buf[self.cursorLine].stamp += 1;
+            }
             self.cursorOn = false;
         }
-        pub fn cursor(self: *Self, line: u8, pos: u8) void {
+        pub fn cursor(self: *Self, line: u8, pos: u8, len: u8) void {
             defer self.mx.unlock();
             self.mx.lock();
-            self.cursorOn = true;
-            self.cursorLine = line;
-            self.cursorPos = pos;
+            //inspect the buffer
+            if (self.cursorOn) {
+                // restore the buffer of the current cursor position
+                self.buf[self.cursorLine].buf[self.cursorPos] = self.cursorSavedChar;
+                self.buf[self.cursorLine].stamp += 1;
+            }
+            if (line < nLines and pos < Line.len) {
+                self.cursorOn = true;
+                var fw = true;
+                if (self.buf[line].buf[pos] == ' ') {
+                    self.cursorLine = line;
+                    self.cursorPos = pos;
+                } else if (pos > 0 and self.buf[line].buf[pos - 1] == ' ') {
+                    self.cursorLine = line;
+                    self.cursorPos = pos - 1;
+                } else if (pos + len < Line.len and self.buf[line].buf[pos + len] == ' ') {
+                    self.cursorLine = line;
+                    self.cursorPos = pos + len;
+                    fw = false;
+                } else if (pos + len - 1 < Line.len and self.buf[line].buf[pos + len - 1] == ' ') {
+                    self.cursorLine = line;
+                    self.cursorPos = pos + len - 1;
+                    fw = false;
+                } else {
+                    self.cursorLine = line;
+                    self.cursorPos = pos;
+                }
+                self.cursorSavedChar = self.buf[self.cursorLine].buf[self.cursorPos];
+                self.buf[self.cursorLine].buf[self.cursorPos] =
+                    if (fw) '}' + 1 else '}' + 2;
+                self.buf[self.cursorLine].stamp += 1;
+            } else {
+                self.cursorOn = false;
+            }
         }
         const WriteError = Datagram_Device.ConnectError || Datagram_Device.WriteError;
         const ReadError = Datagram_Device.ConnectError || Datagram_Device.ReadError;
