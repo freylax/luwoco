@@ -75,6 +75,31 @@ const Pos = struct {
             }
         }
     }
+    // the position of last printable char
+    fn last(p: Pos, str: []const u8) Pos {
+        var q = p;
+        if (str.len > 0) {
+            var i: u8 = @intCast(str.len - 1);
+            while (i > 0 and (str[i] == ' ' or str[i] == '\n')) {
+                i -= 1;
+            }
+            q.skip(i);
+        }
+        return q;
+    }
+    fn skip_(p: Pos, l: u8) Pos {
+        var q = p;
+        for (0..l) |_| {
+            if (q.column == line_end) {
+                q.line += 1;
+                q.column = 0;
+            } else {
+                q.column += 1;
+            }
+        }
+        return q;
+    }
+
     fn skip(p: *Pos, l: u8) void {
         for (0..l) |_| {
             if (p.column == line_end) {
@@ -139,15 +164,15 @@ const menu: []const Item = &.{
     .{ .popup = .{
         .str = " Popup A\n",
         .items = &.{
-            .{ .label = "Label A\n" },
-            .{ .label = "Label B" },
+            .{ .label = " Label A\n" },
+            .{ .label = " Label B" },
         },
     } },
     .{ .popup = .{
         .str = " Popup B\n",
         .items = &.{
-            .{ .label = "Label C\n" },
-            .{ .label = "Label D" },
+            .{ .label = " Label C\n" },
+            .{ .label = " Label D" },
         },
     } },
 };
@@ -237,7 +262,7 @@ const RtItem = struct {
     pos: Pos,
     parent: u8,
     ptr: u8, // specific ptr into tag array
-    len: u8, // item len on screen
+    last: Pos, // pos of last printable char
 };
 
 const RtSection = struct {
@@ -245,6 +270,7 @@ const RtSection = struct {
     end: u8,
     cursor: u8 = 0, // the current cursor item (down)
     parent: u8 = 0, // parent section (up)
+    lines: [2]u8, // displayed lines
 };
 
 const nrRtSections = nrItems[@intFromEnum(ItemTag.popup)] + nrItems[@intFromEnum(ItemTag.embed)] + 1;
@@ -267,8 +293,8 @@ fn initMenu() void {
     var pos = Pos{ .column = 0, .line = 0 };
     var idx = Idx{ .item = 1, .section = 1 };
     // the root item
-    items[0] = .{ .tag = .section, .pos = pos, .parent = 0, .ptr = 0, .len = 0 };
-    sections[0] = .{ .begin = 1, .end = 1 + menu.len, .cursor = 1, .parent = 0 };
+    items[0] = .{ .tag = .section, .pos = pos, .parent = 0, .ptr = 0, .last = pos };
+    sections[0] = .{ .begin = 1, .end = 1 + menu.len, .cursor = 1, .parent = 0, .lines = .{ 0, 1 } };
     initMenuR(menu, &pos, &idx, 0);
 }
 
@@ -290,12 +316,13 @@ fn initMenuHead(l: []const Item, pos: *Pos, idx: *Idx, parent: u8) void {
                     .pos = pos.*,
                     .parent = parent,
                     .ptr = idx.section,
-                    .len = @intCast(pop.str.len),
+                    .last = pos.*.last(pop.str),
                 };
                 sections[idx.section] = .{
                     .begin = 0,
                     .end = 0,
                     .parent = items[parent].ptr,
+                    .lines = .{ 0, 0 },
                 }; // this will be filled in initMenuTail
                 pos.next(pop.str);
                 idx.section += 1;
@@ -307,13 +334,19 @@ fn initMenuHead(l: []const Item, pos: *Pos, idx: *Idx, parent: u8) void {
                     .pos = pos.*,
                     .parent = parent,
                     .ptr = idx.section,
-                    .len = @intCast(emb.str.len),
+                    .last = pos.*.last(emb.str),
                 };
+                const line = items[idx.item].pos.line;
+                const end: u8 = @intCast(idx.item + emb.items.len);
                 sections[idx.section] = .{
                     .begin = idx.item,
-                    .end = @intCast(idx.item + emb.items.len),
+                    .end = end,
                     .parent = items[parent].ptr,
                     .cursor = idx.item,
+                    .lines = if (end > idx.item and line < items[end - 1].last.line)
+                        .{ line, line + 1 }
+                    else
+                        .{ items[j].pos.line, line },
                 };
                 pos.next(emb.str);
                 idx.section += 1;
@@ -321,13 +354,25 @@ fn initMenuHead(l: []const Item, pos: *Pos, idx: *Idx, parent: u8) void {
             },
             .label => |lbl| {
                 lcd.write(pos.line, pos.column, lbl);
-                items[j] = .{ .tag = .label, .pos = pos.*, .parent = parent, .ptr = 0, .len = @intCast(lbl.len) };
+                items[j] = .{
+                    .tag = .label,
+                    .pos = pos.*,
+                    .parent = parent,
+                    .ptr = 0,
+                    .last = pos.*.last(lbl),
+                };
                 pos.next(lbl);
             },
             .value => |val| {
                 const s = "xxxxxxxxxxxxxx";
                 lcd.write(pos.line, pos.column, s[0..val.size]);
-                items[j] = .{ .tag = .value, .pos = pos.*, .parent = parent, .ptr = 0, .len = val.size };
+                items[j] = .{
+                    .tag = .value,
+                    .pos = pos.*,
+                    .parent = parent,
+                    .ptr = 0,
+                    .last = pos.*.skip_(val.size - 1),
+                };
                 pos.skip(val.size);
             },
         }
@@ -343,6 +388,12 @@ fn initMenuTail(l: []const Item, pos: *Pos, idx: *Idx, item_start: u8) void {
                 sec.begin = idx.item;
                 sec.end = @intCast(idx.item + pop.items.len);
                 sec.cursor = idx.item;
+                const line = items[sec.begin].pos.line;
+                if (sec.end > sec.begin and line < items[sec.end - 1].last.line) {
+                    sec.lines = .{ line, line + 1 };
+                } else {
+                    sec.lines = .{ items[j].pos.line, line };
+                }
                 initMenuR(pop.items, pos, idx, @intCast(j));
             },
             else => {},
@@ -350,7 +401,7 @@ fn initMenuTail(l: []const Item, pos: *Pos, idx: *Idx, item_start: u8) void {
     }
 }
 
-var dispLines: [2]u8 = .{ 0, 1 };
+// var dispLines: [2]u8 = .{ 0, 1 };
 var curSection: u8 = 0;
 
 fn advanceCursor(dir: enum { left, right, down, up }) bool {
@@ -360,10 +411,10 @@ fn advanceCursor(dir: enum { left, right, down, up }) bool {
             while (sec.cursor > sec.begin) {
                 sec.cursor -= 1;
                 switch (items[sec.cursor].tag) {
-                    .section, .value => {
+                    .section, .value, .label => {
                         return true;
                     },
-                    else => {},
+                    // else => {},
                 }
             }
         },
@@ -371,10 +422,10 @@ fn advanceCursor(dir: enum { left, right, down, up }) bool {
             while (sec.cursor + 1 < sec.end) {
                 sec.cursor += 1;
                 switch (items[sec.cursor].tag) {
-                    .section, .value => {
+                    .section, .value, .label => {
                         return true;
                     },
-                    else => {},
+                    // else => {},
                 }
             }
         },
@@ -397,60 +448,45 @@ fn advanceCursor(dir: enum { left, right, down, up }) bool {
     return false;
 }
 
+fn buttonEvent(ev: Event) void {
+    switch (ev) {
+        .ButtonInc, .ButtonDec, .ButtonEsc, .ButtonRet => {
+            if (advanceCursor(switch (ev) {
+                .ButtonInc => .right,
+                .ButtonDec => .left,
+                .ButtonEsc => .up,
+                .ButtonRet => .down,
+                else => .up,
+            })) {
+                const sec: *RtSection = &sections[curSection];
+                const cItem = items[sec.cursor];
+                log.info("set cursor to line:{d},column:{d}", .{ cItem.pos.line, cItem.pos.column });
+                lcd.cursor(cItem.pos.line, cItem.pos.column, cItem.last.line, cItem.last.column);
+                const lines = &sec.lines;
+                while (cItem.pos.line < lines[0]) {
+                    lines[0] -= 1;
+                    lines[1] -= 1;
+                }
+                while (cItem.pos.line > lines[1]) {
+                    lines[0] += 1;
+                    lines[1] += 1;
+                }
+            } else {
+                log.info("set cursor off", .{});
+                lcd.cursorOff();
+            }
+        },
+
+        else => {
+            // continue;
+        },
+    }
+}
+
 fn core1() void {
     while (true) {
         const ev: Event = @enumFromInt(fifo.read_blocking());
-
-        switch (ev) {
-            .ButtonInc, .ButtonDec, .ButtonEsc, .ButtonRet => {
-                if (advanceCursor(switch (ev) {
-                    .ButtonInc => .right,
-                    .ButtonDec => .left,
-                    .ButtonEsc => .up,
-                    .ButtonRet => .down,
-                    else => .up,
-                })) {
-                    const i = items[sections[curSection].cursor];
-                    // log.info("set cursor to line:{d},column:{d},len:{d}", .{ i.pos.line, i.pos.column, i.len });
-                    lcd.cursor(i.pos.line, i.pos.column, i.len);
-                    while (i.pos.line < dispLines[0]) {
-                        dispLines[0] -= 1;
-                        dispLines[1] -= 1;
-                    }
-                    while (i.pos.line > dispLines[1]) {
-                        dispLines[0] += 1;
-                        dispLines[1] += 1;
-                    }
-                }
-            },
-            //     // items[]
-            //     // items[cursorItem]
-            //     if (dispLines[1] < bufferLines - 1) {
-            //         dispLines[0] += 1;
-            //         dispLines[1] += 1;
-            //     }
-            // },
-            // .ButtonDec => {
-            //     if (dispLines[0] > 0) {
-            //         dispLines[0] -= 1;
-            //         dispLines[1] -= 1;
-            //     }
-            // },
-            else => {
-                continue;
-            },
-        }
-        // const m = rmenu[dispLines[0]];
-        // const d0 = std.fmt.digits2(m.sib_b);
-        // const d1 = std.fmt.digits2(m.sib_e);
-        led.put(1);
-        // lcd.write(dispLines[0], 14, &d0);
-        // lcd.write(dispLines[1], 14, &d1);
-
-        time.sleep_ms(250);
-        led.put(0);
-        // lcd.write(0, 0, "ooo");
-        time.sleep_ms(250);
+        buttonEvent(ev);
     }
 }
 
@@ -485,8 +521,8 @@ pub fn main() !void {
     led.set_function(.sio);
     led.set_direction(.out);
 
-    multicore.launch_core1(core1);
-    log.info("launched_core1", .{});
+    // multicore.launch_core1(core1);
+    // log.info("launched_core1", .{});
     // lcd.write(0, 0, "Olimex Display");
 
     // const d = std.fmt.digits2(menuSize);
@@ -498,16 +534,27 @@ pub fn main() !void {
     initMenu();
     log.info("initMenu done", .{});
     // log.info("menu:\n{any}", .{menu});
-    // log.info("items:\n{any}", .{items});
-    // log.info("sections:\n{any}", .{sections});
+    for (items, 0..) |i, j| {
+        log.info("items[{d}]:\n{any}", .{ j, i });
+    }
+    for (sections, 0..) |s, j| {
+        log.info("sections[{d}]:\n{any}", .{ j, s });
+    }
     // for (rmenu, 0..) |m, i| {
     //     log.info("rmenu[{d}]: {d},{d}", .{ i, m.sib_b, m.sib_e });
     // }
-    lcd.cursor(0, 0, 8);
-    time.sleep_ms(1000);
+    lcd.cursor(0, 0, 0, 0);
+    time.sleep_ms(100);
+    var changed = true;
     while (true) {
+        const sec: *RtSection = &sections[curSection];
+        const lines = &sec.lines;
         // log.info("Print", .{});
-        if (lcd.print(dispLines)) {
+        if (changed) {
+            log.info("curSection:{d}, lines:{d},{d} ,cursor:{d}", .{ curSection, lines[0], lines[1], sec.cursor });
+        }
+        changed = false;
+        if (lcd.print(lines.*)) {
             // log.info("print", .{});
         } else |err| switch (err) {
             error.IoError => log.err("IoError", .{}),
@@ -517,19 +564,23 @@ pub fn main() !void {
             error.NotConnected => log.err("NotConnected", .{}),
         }
         time.sleep_ms(100);
+        // time.sleep_ms(2000);
         const read_buttons = lcd.read_buttons();
         // log.info("clear", .{});
         if (read_buttons) |b| {
             // log.info("button:{x}", .{b});
             const ev: Event = switch (b) {
-                0b0001 => .ButtonRet,
+                0b0001 => .ButtonEsc,
                 0b0010 => .ButtonDec,
                 0b0100 => .ButtonInc,
-                0b1000 => .ButtonEsc,
+                0b1000 => .ButtonRet,
                 else => .None,
             };
-            if (ev != .None) fifo.write_blocking(@intFromEnum(ev));
-            // buttons.store(b, .monotonic);
+            if (ev != .None) {
+                // fifo.write_blocking(@intFromEnum(ev));
+                buttonEvent(ev);
+                changed = true;
+            }
         } else |err| switch (err) {
             error.IoError => log.err("IoError", .{}),
             error.Timeout => log.err("Timeout", .{}),

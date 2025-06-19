@@ -26,7 +26,7 @@ pub fn BufferedLCD(comptime NrOfLines: comptime_int) type {
         butLast: u4 = 0, // the last buttons read
         cursorOn: bool = false,
         cursorLine: u8 = 0,
-        cursorPos: u8 = 0,
+        cursorCol: u8 = 0,
         cursorSavedChar: u8 = ' ',
 
         pub fn init(dd: Datagram_Device, butOneShot: u4) Self {
@@ -70,43 +70,44 @@ pub fn BufferedLCD(comptime NrOfLines: comptime_int) type {
             self.mx.lock();
             if (self.cursorOn) {
                 // restore the buffer
-                self.buf[self.cursorLine].buf[self.cursorPos] = self.cursorSavedChar;
+                self.buf[self.cursorLine].buf[self.cursorCol] = self.cursorSavedChar;
                 self.buf[self.cursorLine].stamp += 1;
             }
             self.cursorOn = false;
         }
-        pub fn cursor(self: *Self, line: u8, pos: u8, len: u8) void {
+        pub fn cursor(self: *Self, bLine: u8, bCol: u8, _: u8, _: u8) void {
             defer self.mx.unlock();
             self.mx.lock();
             //inspect the buffer
             if (self.cursorOn) {
                 // restore the buffer of the current cursor position
-                self.buf[self.cursorLine].buf[self.cursorPos] = self.cursorSavedChar;
+                self.buf[self.cursorLine].buf[self.cursorCol] = self.cursorSavedChar;
                 self.buf[self.cursorLine].stamp += 1;
             }
-            if (line < nLines and pos < Line.len) {
+            if (bLine < nLines and bCol < Line.len) {
                 self.cursorOn = true;
-                var fw = true;
-                if (self.buf[line].buf[pos] == ' ') {
-                    self.cursorLine = line;
-                    self.cursorPos = pos;
-                } else if (pos > 0 and self.buf[line].buf[pos - 1] == ' ') {
-                    self.cursorLine = line;
-                    self.cursorPos = pos - 1;
-                } else if (pos + len < Line.len and self.buf[line].buf[pos + len] == ' ') {
-                    self.cursorLine = line;
-                    self.cursorPos = pos + len;
-                    fw = false;
-                } else if (pos + len - 1 < Line.len and self.buf[line].buf[pos + len - 1] == ' ') {
-                    self.cursorLine = line;
-                    self.cursorPos = pos + len - 1;
-                    fw = false;
-                } else {
-                    self.cursorLine = line;
-                    self.cursorPos = pos;
-                }
-                self.cursorSavedChar = self.buf[self.cursorLine].buf[self.cursorPos];
-                self.buf[self.cursorLine].buf[self.cursorPos] =
+                // var fw = true;
+                const fw = true;
+                // if (self.buf[line].buf[pos] == ' ') {
+                //     self.cursorLine = line;
+                //     self.cursorPos = pos;
+                // } else if (pos > 0 and self.buf[line].buf[pos - 1] == ' ') {
+                //     self.cursorLine = line;
+                //     self.cursorPos = pos - 1;
+                // } else if (pos + len < Line.len and self.buf[line].buf[pos + len] == ' ') {
+                //     self.cursorLine = line;
+                //     self.cursorPos = pos + len;
+                //     fw = false;
+                // } else if (pos + len - 1 < Line.len and self.buf[line].buf[pos + len - 1] == ' ') {
+                //     self.cursorLine = line;
+                //     self.cursorPos = pos + len - 1;
+                //     fw = false;
+                // } else {
+                self.cursorLine = bLine;
+                self.cursorCol = bCol;
+                // }
+                self.cursorSavedChar = self.buf[self.cursorLine].buf[self.cursorCol];
+                self.buf[self.cursorLine].buf[self.cursorCol] =
                     if (fw) '}' + 1 else '}' + 2;
                 self.buf[self.cursorLine].stamp += 1;
             } else {
@@ -137,6 +138,8 @@ pub fn BufferedLCD(comptime NrOfLines: comptime_int) type {
                     self.dLines[i] = l;
                     self.dBuf[i].stamp = self.buf[l].stamp;
                 }
+                // std.log.info("lcd cursor at {d},{d},{any}", .{ self.cursorLine, self.cursorCol, self.cursorOn });
+
                 // mutex gets released here
             }
             // now the time consuming communication with the display
