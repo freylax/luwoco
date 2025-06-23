@@ -164,7 +164,7 @@ const menu: []const Item = &.{
     .{ .popup = .{
         .str = " Popup A\n",
         .items = &.{
-            .{ .label = " Label A\n" },
+            .{ .label = " Label A is a realy big Label which spans more than one line.\n" },
             .{ .label = " Label B" },
         },
     } },
@@ -260,7 +260,6 @@ const RtItemTag = enum(u2) {
 const RtItem = struct {
     tag: RtItemTag,
     pos: Pos,
-    parent: u8,
     ptr: u8, // specific ptr into tag array
     last: Pos, // pos of last printable char
 };
@@ -293,7 +292,7 @@ fn initMenu() void {
     var pos = Pos{ .column = 0, .line = 0 };
     var idx = Idx{ .item = 1, .section = 1 };
     // the root item
-    items[0] = .{ .tag = .section, .pos = pos, .parent = 0, .ptr = 0, .last = pos };
+    items[0] = .{ .tag = .section, .pos = pos, .ptr = 0, .last = pos };
     sections[0] = .{ .begin = 1, .end = 1 + menu.len, .cursor = 1, .parent = 0, .lines = .{ 0, 1 } };
     initMenuR(menu, &pos, &idx, 0);
 }
@@ -314,14 +313,13 @@ fn initMenuHead(l: []const Item, pos: *Pos, idx: *Idx, parent: u8) void {
                 items[j] = .{
                     .tag = .section,
                     .pos = pos.*,
-                    .parent = parent,
                     .ptr = idx.section,
                     .last = pos.*.last(pop.str),
                 };
                 sections[idx.section] = .{
                     .begin = 0,
                     .end = 0,
-                    .parent = items[parent].ptr,
+                    .parent = parent,
                     .lines = .{ 0, 0 },
                 }; // this will be filled in initMenuTail
                 pos.next(pop.str);
@@ -332,7 +330,6 @@ fn initMenuHead(l: []const Item, pos: *Pos, idx: *Idx, parent: u8) void {
                 items[j] = .{
                     .tag = .section,
                     .pos = pos.*,
-                    .parent = parent,
                     .ptr = idx.section,
                     .last = pos.*.last(emb.str),
                 };
@@ -341,7 +338,7 @@ fn initMenuHead(l: []const Item, pos: *Pos, idx: *Idx, parent: u8) void {
                 sections[idx.section] = .{
                     .begin = idx.item,
                     .end = end,
-                    .parent = items[parent].ptr,
+                    .parent = parent,
                     .cursor = idx.item,
                     .lines = if (end > idx.item and line < items[end - 1].last.line)
                         .{ line, line + 1 }
@@ -349,15 +346,15 @@ fn initMenuHead(l: []const Item, pos: *Pos, idx: *Idx, parent: u8) void {
                         .{ items[j].pos.line, line },
                 };
                 pos.next(emb.str);
+                const this_section = idx.section;
                 idx.section += 1;
-                initMenuR(emb.items, pos, idx, @intCast(j));
+                initMenuR(emb.items, pos, idx, this_section); // @intCast(j));
             },
             .label => |lbl| {
                 lcd.write(pos.line, pos.column, lbl);
                 items[j] = .{
                     .tag = .label,
                     .pos = pos.*,
-                    .parent = parent,
                     .ptr = 0,
                     .last = pos.*.last(lbl),
                 };
@@ -369,7 +366,6 @@ fn initMenuHead(l: []const Item, pos: *Pos, idx: *Idx, parent: u8) void {
                 items[j] = .{
                     .tag = .value,
                     .pos = pos.*,
-                    .parent = parent,
                     .ptr = 0,
                     .last = pos.*.skip_(val.size - 1),
                 };
@@ -384,93 +380,148 @@ fn initMenuTail(l: []const Item, pos: *Pos, idx: *Idx, item_start: u8) void {
         switch (i) {
             .popup => |pop| {
                 pos.onNewLine();
-                const sec: *RtSection = &sections[items[j].ptr];
-                sec.begin = idx.item;
-                sec.end = @intCast(idx.item + pop.items.len);
-                sec.cursor = idx.item;
-                const line = items[sec.begin].pos.line;
-                if (sec.end > sec.begin and line < items[sec.end - 1].last.line) {
-                    sec.lines = .{ line, line + 1 };
-                } else {
-                    sec.lines = .{ items[j].pos.line, line };
+                const idx_ = idx.*; // get a copy
+                initMenuR(pop.items, pos, idx, items[j].ptr); //@intCast(j));
+                if (pop.items.len > 0) {
+                    const sec: *RtSection = &sections[items[j].ptr];
+                    sec.begin = idx_.item;
+                    sec.end = @intCast(idx_.item + pop.items.len);
+                    sec.cursor = idx_.item;
+                    const line = items[sec.begin].pos.line;
+                    // test if we have only one line in the section
+                    if (line == items[sec.end - 1].pos.line) {
+                        // then we show the parent and the section line
+                        sec.lines = .{ items[j].pos.line, line };
+                    } else {
+                        // otherwise the two lines will display the first two lines of the section
+                        sec.lines = .{ line, line + 1 };
+                    }
                 }
-                initMenuR(pop.items, pos, idx, @intCast(j));
             },
             else => {},
         }
     }
 }
 
-// var dispLines: [2]u8 = .{ 0, 1 };
 var curSection: u8 = 0;
 
-fn advanceCursor(dir: enum { left, right, down, up }) bool {
+fn advanceCursor(dir: enum { left, right, down, up }) void {
     const sec: *RtSection = &sections[curSection];
+    const lines = &sec.lines;
+    // test if there are members in this section
+    if (sec.begin == sec.end) {
+        return;
+    }
     switch (dir) {
         .left => {
-            while (sec.cursor > sec.begin) {
-                sec.cursor -= 1;
-                switch (items[sec.cursor].tag) {
-                    .section, .value, .label => {
-                        return true;
-                    },
-                    // else => {},
+            // first we check if we only have to scroll backwards,
+            // this is the case if the cursor item pos is not visible right now
+            if (lines[0] > items[sec.cursor].pos.line) {
+                // just decrease lines
+                lines[1] = lines[0];
+                lines[0] -= 1;
+            } else {
+                // if only one item, do not move cursor
+                if (sec.begin + 1 == sec.end) {
+                    return;
+                }
+                while (sec.cursor >= sec.begin) {
+                    var line_changed = false;
+                    if (sec.cursor == sec.begin) {
+                        sec.cursor = sec.end - 1;
+                        const li = items[sec.cursor].last.line;
+                        if (li != lines[0] or li != lines[1]) {
+                            lines[0] = li - 1;
+                            lines[1] = li;
+                            line_changed = true;
+                        }
+                    } else {
+                        sec.cursor -= 1;
+                        if (items[sec.cursor].pos.line < lines[0]) {
+                            // decrease lines
+                            lines[1] = lines[0];
+                            lines[0] -= 1;
+                            line_changed = true;
+                        }
+                    }
+                    if (line_changed or switch (items[sec.cursor].tag) {
+                        .section, .value => true,
+                        else => false,
+                    }) break;
                 }
             }
         },
         .right => {
-            while (sec.cursor + 1 < sec.end) {
-                sec.cursor += 1;
-                switch (items[sec.cursor].tag) {
-                    .section, .value, .label => {
-                        return true;
-                    },
-                    // else => {},
+            // check if we have to scroll forward
+            if (lines[1] < items[sec.cursor].last.line) {
+                // increase lines
+                lines[0] = lines[1];
+                lines[1] += 1;
+            } else {
+                // if only one item, do not move cursor
+                if (sec.begin + 1 == sec.end) {
+                    return;
+                }
+                while (sec.cursor < sec.end) {
+                    var line_changed = false;
+                    if (sec.cursor + 1 == sec.end) {
+                        sec.cursor = sec.begin;
+                        const li = items[sec.cursor].pos.line;
+                        if (li != lines[0] or li != lines[1]) {
+                            lines[0] = li;
+                            lines[1] = li + 1;
+                            line_changed = true;
+                        }
+                    } else {
+                        sec.cursor += 1;
+                        if (items[sec.cursor].last.line > lines[1]) {
+                            // increase lines
+                            lines[0] = lines[1];
+                            lines[1] += 1;
+                            line_changed = true;
+                        }
+                    }
+                    if (line_changed or switch (items[sec.cursor].tag) {
+                        .section, .value => true,
+                        else => false,
+                    }) break;
                 }
             }
         },
         .up => {
             if (curSection > 0) {
                 curSection = sec.parent;
-                return true;
             }
         },
         .down => {
             switch (items[sec.cursor].tag) {
                 .section => {
                     curSection = items[sec.cursor].ptr;
-                    return true;
                 },
                 else => {},
             }
         },
     }
-    return false;
 }
 
 fn buttonEvent(ev: Event) void {
     switch (ev) {
         .ButtonInc, .ButtonDec, .ButtonEsc, .ButtonRet => {
-            if (advanceCursor(switch (ev) {
+            advanceCursor(switch (ev) {
                 .ButtonInc => .right,
                 .ButtonDec => .left,
                 .ButtonEsc => .up,
                 .ButtonRet => .down,
                 else => .up,
-            })) {
-                const sec: *RtSection = &sections[curSection];
-                const cItem = items[sec.cursor];
-                log.info("set cursor to line:{d},column:{d}", .{ cItem.pos.line, cItem.pos.column });
+            });
+            const sec: *RtSection = &sections[curSection];
+            const cItem = items[sec.cursor];
+            if (switch (cItem.tag) {
+                .section, .value => true,
+                else => false,
+            }) {
+                log.info("cursor is at line:{d},column:{d}", .{ cItem.pos.line, cItem.pos.column });
                 lcd.cursor(cItem.pos.line, cItem.pos.column, cItem.last.line, cItem.last.column);
-                const lines = &sec.lines;
-                while (cItem.pos.line < lines[0]) {
-                    lines[0] -= 1;
-                    lines[1] -= 1;
-                }
-                while (cItem.pos.line > lines[1]) {
-                    lines[0] += 1;
-                    lines[1] += 1;
-                }
             } else {
                 log.info("set cursor off", .{});
                 lcd.cursorOff();
