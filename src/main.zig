@@ -520,10 +520,10 @@ fn buttonEvent(ev: Event) void {
                 .section, .value => true,
                 else => false,
             }) {
-                log.info("cursor is at line:{d},column:{d}", .{ cItem.pos.line, cItem.pos.column });
+                // log.info("cursor is at line:{d},column:{d}", .{ cItem.pos.line, cItem.pos.column });
                 lcd.cursor(cItem.pos.line, cItem.pos.column, cItem.last.line, cItem.last.column);
             } else {
-                log.info("set cursor off", .{});
+                // log.info("set cursor off", .{});
                 lcd.cursorOff();
             }
         },
@@ -571,39 +571,49 @@ pub fn main() !void {
     time.sleep_ms(100);
     led.set_function(.sio);
     led.set_direction(.out);
-
+    time.sleep_ms(1000); // we need some time after boot for i2c to become ready, otherwise
+    //                      unsupported will be thrown
     // multicore.launch_core1(core1);
     // log.info("launched_core1", .{});
     // lcd.write(0, 0, "Olimex Display");
+    // if (lcd.print(.{ 0, 1 })) {
+    //     // log.info("print", .{});
+    // } else |err| switch (err) {
+    //     error.IoError => log.err("IoError", .{}),
+    //     error.Timeout => log.err("Timeout", .{}),
+    //     error.DeviceBusy => log.err("DeviceBusy", .{}),
+    //     error.Unsupported => log.err("Unsupported", .{}),
+    //     error.NotConnected => log.err("NotConnected", .{}),
+    // }
 
     // const d = std.fmt.digits2(menuSize);
     // lcd.write(0, 1, &d);
     // microzig.cpu.wfi();
     //
-    log.info("items.len:{d}, sections.len:{d}", .{ items.len, sections.len });
-    log.info("initMenu()", .{});
+    // log.info("items.len:{d}, sections.len:{d}", .{ items.len, sections.len });
+    // log.info("initMenu()", .{});
     initMenu();
-    log.info("initMenu done", .{});
+    // log.info("initMenu done", .{});
     // log.info("menu:\n{any}", .{menu});
-    for (items, 0..) |i, j| {
-        log.info("items[{d}]:\n{any}", .{ j, i });
-    }
-    for (sections, 0..) |s, j| {
-        log.info("sections[{d}]:\n{any}", .{ j, s });
-    }
+    // for (items, 0..) |i, j| {
+    //     log.info("items[{d}]:\n{any}", .{ j, i });
+    // }
+    // for (sections, 0..) |s, j| {
+    //     log.info("sections[{d}]:\n{any}", .{ j, s });
+    // }
     // for (rmenu, 0..) |m, i| {
     //     log.info("rmenu[{d}]: {d},{d}", .{ i, m.sib_b, m.sib_e });
     // }
-    lcd.cursor(0, 0, 0, 0);
-    time.sleep_ms(100);
+    // lcd.cursor(0, 0, 0, 0);
+    // time.sleep_ms(100000);
     var changed = true;
     while (true) {
         const sec: *RtSection = &sections[curSection];
         const lines = &sec.lines;
         // log.info("Print", .{});
-        if (changed) {
-            log.info("curSection:{d}, lines:{d},{d} ,cursor:{d}", .{ curSection, lines[0], lines[1], sec.cursor });
-        }
+        // if (changed) {
+        //     log.info("curSection:{d}, lines:{d},{d} ,cursor:{d}", .{ curSection, lines[0], lines[1], sec.cursor });
+        // }
         changed = false;
         if (lcd.print(lines.*)) {
             // log.info("print", .{});
