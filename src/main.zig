@@ -146,6 +146,34 @@ const Popup = struct {
 
 const Value = struct {
     size: u8,
+    ptr: *anyopaque,
+    vtable: *const VTable,
+    pub const VTable = struct {
+        get: *const fn (*anyopaque) []const u8,
+    };
+    pub inline fn get(v: Value) []const u8 {
+        return v.vtable.get(v.ptr);
+    }
+};
+
+const StrValue = struct {
+    str: []const u8 = "Test",
+    pub fn value(self: *StrValue) Value {
+        return .{
+            .size = 4,
+            .ptr = self,
+            .vtable = &.{
+                .get = get,
+            },
+        };
+    }
+
+    fn get(
+        ctx: *anyopaque,
+    ) []const u8 {
+        const self: *StrValue = @ptrCast(@alignCast(ctx));
+        return self.str;
+    }
 };
 
 const Item = union(ItemTag) {
@@ -155,6 +183,10 @@ const Item = union(ItemTag) {
     value: Value,
 };
 //&[_]u8
+//
+//
+var svalue = StrValue{};
+
 const menu: []const Item = &.{
     // .{ .label = &.{ 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0e, 0x0f, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2a, 0x2b, 0x2e, 0x2f, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3a, 0x3b, 0x3e, 0x3f, 0x40, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48, 0x49, 0x4a, 0x4b, 0x4e, 0x4f, 0x50, 0x51, 0x52, 0x53, 0x54, 0x55, 0x56, 0x57, 0x58, 0x59, 0x5a, 0x5b, 0x5e, 0x5f, 0x60, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68, 0x69, 0x6a, 0x6b, 0x6e, 0x6f, 0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77, 0x78, 0x79, 0x7a, 0x7b, 0x7e, 0x7f, 0x80, 0x81, 0x82, 0x83, 0x84, 0x85, 0x86, 0x87, 0x88, 0x89, 0x8a, 0x8b, 0x8e, 0x8f, 0x90, 0x91, 0x92, 0x93, 0x94, 0x95, 0x96, 0x97, 0x98, 0x99, 0x9a, 0x9b, 0x9e, 0x9f, 0xa0, 0xa1, 0xa2, 0xa3, 0xa4, 0xa5, 0xa6, 0xa7, 0xa8, 0xa9, 0xaa, 0xab, 0xae, 0xaf, 0xb0, 0xb1, 0xb2, 0xb3, 0xb4, 0xb5, 0xb6, 0xb7, 0xb8, 0xb9, 0xba, 0xbb, 0xbe, 0xbf, 0xc0, 0xc1, 0xc2, 0xc3, 0xc4, 0xc5, 0xc6, 0xc7, 0xc8, 0xc9, 0xca, 0xcb, 0xce, 0xcf, 0xd0, 0xd1, 0xd2, 0xd3, 0xd4, 0xd5, 0xd6, 0xd7, 0xd8, 0xd9, 0xda, 0xdb, 0xde, 0xdf, 0xe0, 0xe1, 0xe2, 0xe3, 0xe4, 0xe5, 0xe6, 0xe7, 0xe8, 0xe9, 0xea, 0xeb, 0xee, 0xef, 0xf0, 0xf1, 0xf2, 0xf3, 0xf4, 0xf5, 0xf6, 0xf7, 0xf8, 0xf9, 0xfa, 0xfb, 0xfe, 0xff } },
     // .{ .embed = .{
@@ -164,8 +196,8 @@ const menu: []const Item = &.{
     .{ .popup = .{
         .str = " Popup A\n",
         .items = &.{
-            .{ .label = " Label A is a realy big Label which spans more than one line.\n" },
-            .{ .label = " Label B" },
+            .{ .label = "Value:" },
+            .{ .value = svalue.value() },
         },
     } },
     .{ .popup = .{
@@ -272,6 +304,11 @@ const RtSection = struct {
     lines: [2]u8, // displayed lines
 };
 
+const RtValue = struct {
+    item: u8,
+    value: Value,
+};
+
 const nrRtSections = nrItems[@intFromEnum(ItemTag.popup)] + nrItems[@intFromEnum(ItemTag.embed)] + 1;
 const nrRtValues = nrItems[@intFromEnum(ItemTag.value)];
 const nrRtLabels = nrItems[@intFromEnum(ItemTag.label)];
@@ -279,6 +316,7 @@ const nrRtItems = nrRtSections + nrRtValues + nrRtLabels;
 
 var items: [nrRtItems]RtItem = undefined;
 var sections: [nrRtSections]RtSection = undefined;
+var values: [nrRtValues]RtValue = undefined;
 
 const LCD = olimex_lcd.BufferedLCD(bufferLines);
 
@@ -286,11 +324,12 @@ var lcd: LCD = undefined;
 const Idx = struct {
     item: u8,
     section: u8,
+    value: u8,
 };
 
 fn initMenu() void {
     var pos = Pos{ .column = 0, .line = 0 };
-    var idx = Idx{ .item = 1, .section = 1 };
+    var idx = Idx{ .item = 1, .section = 1, .value = 0 };
     // the root item
     items[0] = .{ .tag = .section, .pos = pos, .ptr = 0, .last = pos };
     sections[0] = .{ .begin = 1, .end = 1 + menu.len, .cursor = 1, .parent = 0, .lines = .{ 0, 1 } };
@@ -366,10 +405,12 @@ fn initMenuHead(l: []const Item, pos: *Pos, idx: *Idx, parent: u8) void {
                 items[j] = .{
                     .tag = .value,
                     .pos = pos.*,
-                    .ptr = 0,
+                    .ptr = idx.value,
                     .last = pos.*.skip_(val.size - 1),
                 };
                 pos.skip(val.size);
+                values[idx.value] = .{ .item = @intCast(j), .value = val };
+                idx.value += 1;
             },
         }
     }
@@ -425,12 +466,13 @@ fn advanceCursor(dir: enum { left, right, down, up }) void {
                 if (sec.begin + 1 == sec.end) {
                     return;
                 }
+                const start = sec.cursor; // since we cycle around we need a stop
                 while (sec.cursor >= sec.begin) {
                     var line_changed = false;
                     if (sec.cursor == sec.begin) {
                         sec.cursor = sec.end - 1;
                         const li = items[sec.cursor].last.line;
-                        if (li != lines[0] or li != lines[1]) {
+                        if (li != lines[0] and li != lines[1]) {
                             lines[0] = li - 1;
                             lines[1] = li;
                             line_changed = true;
@@ -444,7 +486,7 @@ fn advanceCursor(dir: enum { left, right, down, up }) void {
                             line_changed = true;
                         }
                     }
-                    if (line_changed or switch (items[sec.cursor].tag) {
+                    if (start == sec.cursor or line_changed or switch (items[sec.cursor].tag) {
                         .section, .value => true,
                         else => false,
                     }) break;
@@ -454,34 +496,42 @@ fn advanceCursor(dir: enum { left, right, down, up }) void {
         .right => {
             // check if we have to scroll forward
             if (lines[1] < items[sec.cursor].last.line) {
+                log.info("right,A", .{});
                 // increase lines
                 lines[0] = lines[1];
                 lines[1] += 1;
             } else {
+                log.info("right,B", .{});
+
                 // if only one item, do not move cursor
                 if (sec.begin + 1 == sec.end) {
                     return;
                 }
+                const start = sec.cursor; // since we cycle around we need a stop
                 while (sec.cursor < sec.end) {
                     var line_changed = false;
                     if (sec.cursor + 1 == sec.end) {
+                        log.info("right,C", .{});
                         sec.cursor = sec.begin;
                         const li = items[sec.cursor].pos.line;
-                        if (li != lines[0] or li != lines[1]) {
+                        if (li != lines[0] and li != lines[1]) {
+                            log.info("right,D", .{});
                             lines[0] = li;
                             lines[1] = li + 1;
                             line_changed = true;
                         }
                     } else {
+                        log.info("right,E", .{});
                         sec.cursor += 1;
                         if (items[sec.cursor].last.line > lines[1]) {
+                            log.info("right,F", .{});
                             // increase lines
                             lines[0] = lines[1];
                             lines[1] += 1;
                             line_changed = true;
                         }
                     }
-                    if (line_changed or switch (items[sec.cursor].tag) {
+                    if (start == sec.cursor or line_changed or switch (items[sec.cursor].tag) {
                         .section, .value => true,
                         else => false,
                     }) break;
@@ -516,11 +566,11 @@ fn buttonEvent(ev: Event) void {
             });
             const sec: *RtSection = &sections[curSection];
             const cItem = items[sec.cursor];
+            log.info("cursor item:{d} is at line:{d},column:{d}", .{ sec.cursor, cItem.pos.line, cItem.pos.column });
             if (switch (cItem.tag) {
                 .section, .value => true,
                 else => false,
             }) {
-                // log.info("cursor is at line:{d},column:{d}", .{ cItem.pos.line, cItem.pos.column });
                 lcd.cursor(cItem.pos.line, cItem.pos.column, cItem.last.line, cItem.last.column);
             } else {
                 // log.info("set cursor off", .{});
@@ -595,21 +645,29 @@ pub fn main() !void {
     initMenu();
     // log.info("initMenu done", .{});
     // log.info("menu:\n{any}", .{menu});
-    // for (items, 0..) |i, j| {
-    //     log.info("items[{d}]:\n{any}", .{ j, i });
-    // }
-    // for (sections, 0..) |s, j| {
-    //     log.info("sections[{d}]:\n{any}", .{ j, s });
-    // }
-    // for (rmenu, 0..) |m, i| {
-    //     log.info("rmenu[{d}]: {d},{d}", .{ i, m.sib_b, m.sib_e });
-    // }
-    // lcd.cursor(0, 0, 0, 0);
-    // time.sleep_ms(100000);
+    for (items, 0..) |i, j| {
+        log.info("items[{d}]:\n{any}", .{ j, i });
+    }
+    for (sections, 0..) |s, j| {
+        log.info("sections[{d}]:\n{any}", .{ j, s });
+    }
+    for (values, 0..) |v, j| {
+        log.info("values[{d}]: item={d}, size={d}, val={s}", .{ j, v.item, v.value.size, v.value.get() });
+    }
+    lcd.cursor(0, 0, 0, 0);
+    time.sleep_ms(100);
     var changed = true;
     while (true) {
         const sec: *RtSection = &sections[curSection];
         const lines = &sec.lines;
+        // iterate over the values and write those which are
+        // in the current display area
+        for (values) |rval| {
+            const item: *RtItem = &items[rval.item];
+            if ((item.pos.line <= lines[0] and lines[0] <= item.last.line) or (item.pos.line <= lines[1] and lines[1] <= item.last.line))
+                lcd.write(item.pos.line, item.pos.column, rval.value.get());
+        }
+
         // log.info("Print", .{});
         // if (changed) {
         //     log.info("curSection:{d}, lines:{d},{d} ,cursor:{d}", .{ curSection, lines[0], lines[1], sec.cursor });
