@@ -57,7 +57,7 @@ const line_len = olimex_lcd.line_len;
 const line_end = line_len - 1;
 
 const Pos = struct {
-    line: u8,
+    line: u16,
     column: u5,
     fn next(p: *Pos, str: []const u8) void {
         for (str) |c| {
@@ -79,7 +79,7 @@ const Pos = struct {
     fn last(p: Pos, str: []const u8) Pos {
         var q = p;
         if (str.len > 0) {
-            var i: u8 = @intCast(str.len - 1);
+            var i: u16 = @intCast(str.len - 1);
             while (i > 0 and (str[i] == ' ' or str[i] == '\n')) {
                 i -= 1;
             }
@@ -87,7 +87,7 @@ const Pos = struct {
         }
         return q;
     }
-    fn skip_(p: Pos, l: u8) Pos {
+    fn skip_(p: Pos, l: u16) Pos {
         var q = p;
         for (0..l) |_| {
             if (q.column == line_end) {
@@ -100,7 +100,7 @@ const Pos = struct {
         return q;
     }
 
-    fn skip(p: *Pos, l: u8) void {
+    fn skip(p: *Pos, l: u16) void {
         for (0..l) |_| {
             if (p.column == line_end) {
                 p.newLine();
@@ -124,8 +124,8 @@ const Pos = struct {
 const ItemTag = enum(u2) {
     popup,
     embed,
-    label,
     value,
+    label,
 };
 
 const ItemTagLen = @typeInfo(ItemTag).@"enum".fields.len;
@@ -144,62 +144,142 @@ const Popup = struct {
 //     str: []const u8,
 // };
 
-const Value = struct {
+const ValueTag = enum(u1) {
+    ro,
+    rw,
+};
+
+const RoValue = struct {
     size: u8,
     ptr: *anyopaque,
     vtable: *const VTable,
     pub const VTable = struct {
         get: *const fn (*anyopaque) []const u8,
     };
-    pub inline fn get(v: Value) []const u8 {
+    pub inline fn get(v: RoValue) []const u8 {
         return v.vtable.get(v.ptr);
+    }
+};
+
+const RwValue = struct {
+    size: u8,
+    ptr: *anyopaque,
+    vtable: *const VTable,
+    pub const VTable = struct {
+        get: *const fn (*anyopaque) []const u8,
+        inc: *const fn (*anyopaque) void,
+        dec: *const fn (*anyopaque) void,
+    };
+    pub inline fn get(v: RwValue) []const u8 {
+        return v.vtable.get(v.ptr);
+    }
+    pub inline fn inc(v: RwValue) void {
+        v.vtable.inc(v.ptr);
+    }
+    pub inline fn dec(v: RwValue) void {
+        v.vtable.dec(v.ptr);
+    }
+};
+
+const Value = union(ValueTag) {
+    ro: RoValue,
+    rw: RwValue,
+    pub inline fn size(v: Value) u8 {
+        return switch (v) {
+            .ro => |ro| ro.size,
+            .rw => |rw| rw.size,
+        };
+    }
+    pub inline fn get(v: Value) []const u8 {
+        return switch (v) {
+            .ro => |ro| ro.get(),
+            .rw => |rw| rw.get(),
+        };
     }
 };
 
 const StrValue = struct {
     str: []const u8 = "Test",
     pub fn value(self: *StrValue) Value {
-        return .{
+        return .{ .ro = .{
             .size = 4,
             .ptr = self,
-            .vtable = &.{
-                .get = get,
+            .vtable = &.{ .get = get },
+        } };
+    }
+
+    fn get(ctx: *anyopaque) []const u8 {
+        const self: *StrValue = @ptrCast(@alignCast(ctx));
+        return self.str;
+    }
+};
+
+const IntValue = struct {
+    min: u8 = 0,
+    max: u8,
+    val: u8,
+    buf: [4]u8 = [_]u8{' '} ** 4,
+    // fn size(max: u8) u8 {
+    //     return 1 + if (max > 99) 3 else if (max > 9) 2 else 1;
+    // }
+    pub fn value(self: *IntValue) Value {
+        return .{
+            .rw = .{
+                .size = 4, //comptime size(self.max),
+                .ptr = self,
+                .vtable = &.{ .get = get, .inc = inc, .dec = dec },
             },
         };
     }
-
-    fn get(
-        ctx: *anyopaque,
-    ) []const u8 {
-        const self: *StrValue = @ptrCast(@alignCast(ctx));
-        return self.str;
+    fn get(ctx: *anyopaque) []const u8 {
+        const self: *IntValue = @ptrCast(@alignCast(ctx));
+        _ = std.fmt.formatIntBuf(&self.buf, self.val, 10, .lower, .{ .alignment = .right, .width = 4 });
+        return &self.buf;
+    }
+    fn inc(ctx: *anyopaque) void {
+        const self: *IntValue = @ptrCast(@alignCast(ctx));
+        if (self.val >= self.max or self.val < self.min) {
+            self.val = self.min;
+        } else {
+            self.val += 1;
+        }
+    }
+    fn dec(ctx: *anyopaque) void {
+        const self: *IntValue = @ptrCast(@alignCast(ctx));
+        if (self.val > self.max or self.val <= self.min) {
+            self.val = self.max;
+        } else {
+            self.val -= 1;
+        }
     }
 };
 
 const Item = union(ItemTag) {
     popup: Popup,
     embed: Embed,
-    label: []const u8,
     value: Value,
+    label: []const u8,
 };
 //&[_]u8
 //
 //
 var svalue = StrValue{};
+var back_light = IntValue{ .min = 0, .max = 10, .val = 3 };
 
 const menu: []const Item = &.{
-    // .{ .label = &.{ 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0e, 0x0f, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2a, 0x2b, 0x2e, 0x2f, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3a, 0x3b, 0x3e, 0x3f, 0x40, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48, 0x49, 0x4a, 0x4b, 0x4e, 0x4f, 0x50, 0x51, 0x52, 0x53, 0x54, 0x55, 0x56, 0x57, 0x58, 0x59, 0x5a, 0x5b, 0x5e, 0x5f, 0x60, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68, 0x69, 0x6a, 0x6b, 0x6e, 0x6f, 0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77, 0x78, 0x79, 0x7a, 0x7b, 0x7e, 0x7f, 0x80, 0x81, 0x82, 0x83, 0x84, 0x85, 0x86, 0x87, 0x88, 0x89, 0x8a, 0x8b, 0x8e, 0x8f, 0x90, 0x91, 0x92, 0x93, 0x94, 0x95, 0x96, 0x97, 0x98, 0x99, 0x9a, 0x9b, 0x9e, 0x9f, 0xa0, 0xa1, 0xa2, 0xa3, 0xa4, 0xa5, 0xa6, 0xa7, 0xa8, 0xa9, 0xaa, 0xab, 0xae, 0xaf, 0xb0, 0xb1, 0xb2, 0xb3, 0xb4, 0xb5, 0xb6, 0xb7, 0xb8, 0xb9, 0xba, 0xbb, 0xbe, 0xbf, 0xc0, 0xc1, 0xc2, 0xc3, 0xc4, 0xc5, 0xc6, 0xc7, 0xc8, 0xc9, 0xca, 0xcb, 0xce, 0xcf, 0xd0, 0xd1, 0xd2, 0xd3, 0xd4, 0xd5, 0xd6, 0xd7, 0xd8, 0xd9, 0xda, 0xdb, 0xde, 0xdf, 0xe0, 0xe1, 0xe2, 0xe3, 0xe4, 0xe5, 0xe6, 0xe7, 0xe8, 0xe9, 0xea, 0xeb, 0xee, 0xef, 0xf0, 0xf1, 0xf2, 0xf3, 0xf4, 0xf5, 0xf6, 0xf7, 0xf8, 0xf9, 0xfa, 0xfb, 0xfe, 0xff } },
     // .{ .embed = .{
     //     .str = "Embed",
     //     .items = &.{ .{ .label = "aaa\n" }, .{ .label = "bbb" } },
     // } },
-    .{ .popup = .{
-        .str = " Popup A\n",
-        .items = &.{
-            .{ .label = "Value:" },
-            .{ .value = svalue.value() },
+    .{
+        .popup = .{
+            .str = " Popup A\n",
+            .items = &.{
+                // .{ .label = "Backlight:" },
+                .{ .value = back_light.value() },
+            },
         },
-    } },
+    },
     .{ .popup = .{
         .str = " Popup B\n",
         .items = &.{
@@ -207,8 +287,38 @@ const menu: []const Item = &.{
             .{ .label = " Label D" },
         },
     } },
+    .{
+        .popup = .{
+            .str = " Characters\n",
+            .items = &.{
+                .{
+                    .label = &.{
+                        '0', '0', 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, '\n', //
+                        '0', 'E', 0x0e, 0x0f, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, '\n', //
+                        '1', 'C', 0x1c, 0x1d, 0x1e, 0x1f, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, '\n', //
+                        '2', 'A', 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, '\n', //
+                        '3', '8', 0x38, 0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e, 0x3f, 0x40, 0x41, 0x42, 0x43, 0x44, 0x45, '\n', //
+                        '4', '6', 0x46, 0x47, 0x48, 0x49, 0x4a, 0x4b, 0x4c, 0x4d, 0x4e, 0x4f, 0x50, 0x51, 0x52, 0x53, '\n', //
+                        '5', '4', 0x54, 0x55, 0x56, 0x57, 0x58, 0x59, 0x5a, 0x5b, 0x5c, 0x5d, 0x5e, 0x5f, 0x60, 0x61, '\n', //
+                        '6', '2', 0x62, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68, 0x69, 0x6a, 0x6b, 0x6c, 0x6d, 0x6e, 0x6f, '\n', //
+                        '7', '0', 0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77, 0x78, 0x79, 0x7a, 0x7b, 0x7c, 0x7d, '\n', //
+                        '7', 'E', 0x7e, 0x7f, 0x80, 0x81, 0x82, 0x83, 0x84, 0x85, 0x86, 0x87, 0x88, 0x89, 0x8a, 0x8b, '\n', //
+                        '8', 'C', 0x8c, 0x8d, 0x8e, 0x8f, 0x90, 0x91, 0x92, 0x93, 0x94, 0x95, 0x96, 0x97, 0x98, 0x99, '\n', //
+                        '9', 'A', 0x9a, 0x9b, 0x9c, 0x9d, 0x9e, 0x9f, 0xa0, 0xa1, 0xa2, 0xa3, 0xa4, 0xa5, 0xa6, 0xa7, '\n', //
+                        'A', '8', 0xa8, 0xa9, 0xaa, 0xab, 0xac, 0xad, 0xae, 0xaf, 0xb0, 0xb1, 0xb2, 0xb3, 0xb4, 0xb5, '\n', //
+                        'B', '6', 0xb6, 0xb7, 0xb8, 0xb9, 0xba, 0xbb, 0xbc, 0xbd, 0xbe, 0xbf, 0xc0, 0xc1, 0xc2, 0xc3, '\n', //
+                        'C', '4', 0xc4, 0xc5, 0xc6, 0xc7, 0xc8, 0xc9, 0xca, 0xcb, 0xcc, 0xcd, 0xce, 0xcf, 0xd0, 0xd1, '\n', //
+                        'D', '2', 0xd2, 0xd3, 0xd4, 0xd5, 0xd6, 0xd7, 0xd8, 0xd9, 0xda, 0xdb, 0xdc, 0xdd, 0xde, 0xdf, '\n', //
+                        'E', '0', 0xe0, 0xe1, 0xe2, 0xe3, 0xe4, 0xe5, 0xe6, 0xe7, 0xe8, 0xe9, 0xea, 0xeb, 0xec, 0xed, '\n', //
+                        'E', 'E', 0xee, 0xef, 0xf0, 0xf1, 0xf2, 0xf3, 0xf4, 0xf5, 0xf6, 0xf7, 0xf8, 0xf9, 0xfa, 0xfb, '\n', //
+                        'F', 'C', 0xfc, 0xfd, 0xfe, 0xff,
+                    },
+                },
+            },
+        },
+    },
 };
-fn treeSize(l: []const Item, count: *[ItemTagLen]u8) void {
+fn treeSize(l: []const Item, count: *[ItemTagLen]u16) void {
     for (l) |i| {
         switch (i) {
             .popup => |p| {
@@ -225,7 +335,7 @@ fn treeSize(l: []const Item, count: *[ItemTagLen]u8) void {
 }
 
 const nrItems = calcTreeSize: {
-    var counter = [_]u8{0} ** ItemTagLen;
+    var counter = [_]u16{0} ** ItemTagLen;
     treeSize(menu, &counter);
     break :calcTreeSize counter;
 };
@@ -252,7 +362,7 @@ fn advancePosHead(l: []const Item, pos: *Pos) void {
                 pos.next(lbl);
             },
             .value => |val| {
-                pos.skip(val.size);
+                pos.skip(val.size());
             },
         }
     }
@@ -292,20 +402,32 @@ const RtItemTag = enum(u2) {
 const RtItem = struct {
     tag: RtItemTag,
     pos: Pos,
-    ptr: u8, // specific ptr into tag array
+    ptr: u16, // specific ptr into tag array
     last: Pos, // pos of last printable char
 };
 
+const SectionType = enum(u2) {
+    normal,
+    one_value,
+};
+
+const SectionMode = enum(u2) {
+    select_item,
+    change_value,
+};
+
 const RtSection = struct {
-    begin: u8,
-    end: u8,
-    cursor: u8 = 0, // the current cursor item (down)
-    parent: u8 = 0, // parent section (up)
-    lines: [2]u8, // displayed lines
+    type: SectionType = .normal,
+    mode: SectionMode = .select_item,
+    begin: u16, // first item
+    end: u16, // item which does not belong to this section
+    cursor: u16 = 0, // the current cursor item (down)
+    parent: u16 = 0, // parent section (up)
+    lines: [2]u16, // displayed lines
 };
 
 const RtValue = struct {
-    item: u8,
+    item: u16,
     value: Value,
 };
 
@@ -322,9 +444,9 @@ const LCD = olimex_lcd.BufferedLCD(bufferLines);
 
 var lcd: LCD = undefined;
 const Idx = struct {
-    item: u8,
-    section: u8,
-    value: u8,
+    item: u16,
+    section: u16,
+    value: u16,
 };
 
 fn initMenu() void {
@@ -334,15 +456,16 @@ fn initMenu() void {
     items[0] = .{ .tag = .section, .pos = pos, .ptr = 0, .last = pos };
     sections[0] = .{ .begin = 1, .end = 1 + menu.len, .cursor = 1, .parent = 0, .lines = .{ 0, 1 } };
     initMenuR(menu, &pos, &idx, 0);
+    checkSections();
 }
 
-fn initMenuR(l: []const Item, pos: *Pos, idx: *Idx, parent: u8) void {
+fn initMenuR(l: []const Item, pos: *Pos, idx: *Idx, parent: u16) void {
     const item_start = idx.item;
     initMenuHead(l, pos, idx, parent);
     initMenuTail(l, pos, idx, item_start);
 }
 
-fn initMenuHead(l: []const Item, pos: *Pos, idx: *Idx, parent: u8) void {
+fn initMenuHead(l: []const Item, pos: *Pos, idx: *Idx, parent: u16) void {
     const item_start = idx.item;
     idx.item += @intCast(l.len);
     for (l, item_start..) |i, j| {
@@ -373,7 +496,7 @@ fn initMenuHead(l: []const Item, pos: *Pos, idx: *Idx, parent: u8) void {
                     .last = pos.*.last(emb.str),
                 };
                 const line = items[idx.item].pos.line;
-                const end: u8 = @intCast(idx.item + emb.items.len);
+                const end: u16 = @intCast(idx.item + emb.items.len);
                 sections[idx.section] = .{
                     .begin = idx.item,
                     .end = end,
@@ -387,7 +510,7 @@ fn initMenuHead(l: []const Item, pos: *Pos, idx: *Idx, parent: u8) void {
                 pos.next(emb.str);
                 const this_section = idx.section;
                 idx.section += 1;
-                initMenuR(emb.items, pos, idx, this_section); // @intCast(j));
+                initMenuR(emb.items, pos, idx, this_section);
             },
             .label => |lbl| {
                 lcd.write(pos.line, pos.column, lbl);
@@ -401,14 +524,14 @@ fn initMenuHead(l: []const Item, pos: *Pos, idx: *Idx, parent: u8) void {
             },
             .value => |val| {
                 const s = "xxxxxxxxxxxxxx";
-                lcd.write(pos.line, pos.column, s[0..val.size]);
+                lcd.write(pos.line, pos.column, s[0..val.size()]);
                 items[j] = .{
                     .tag = .value,
                     .pos = pos.*,
                     .ptr = idx.value,
-                    .last = pos.*.skip_(val.size - 1),
+                    .last = pos.*.skip_(val.size() - 1),
                 };
-                pos.skip(val.size);
+                pos.skip(val.size());
                 values[idx.value] = .{ .item = @intCast(j), .value = val };
                 idx.value += 1;
             },
@@ -416,7 +539,7 @@ fn initMenuHead(l: []const Item, pos: *Pos, idx: *Idx, parent: u8) void {
     }
 }
 
-fn initMenuTail(l: []const Item, pos: *Pos, idx: *Idx, item_start: u8) void {
+fn initMenuTail(l: []const Item, pos: *Pos, idx: *Idx, item_start: u16) void {
     for (l, item_start..) |i, j| {
         switch (i) {
             .popup => |pop| {
@@ -430,7 +553,7 @@ fn initMenuTail(l: []const Item, pos: *Pos, idx: *Idx, item_start: u8) void {
                     sec.cursor = idx_.item;
                     const line = items[sec.begin].pos.line;
                     // test if we have only one line in the section
-                    if (line == items[sec.end - 1].pos.line) {
+                    if (line == items[sec.end - 1].last.line) {
                         // then we show the parent and the section line
                         sec.lines = .{ items[j].pos.line, line };
                     } else {
@@ -444,7 +567,59 @@ fn initMenuTail(l: []const Item, pos: *Pos, idx: *Idx, item_start: u8) void {
     }
 }
 
-var curSection: u8 = 0;
+// setup the initial cursor positions
+// and modi for values
+fn checkSections() void {
+    for (&sections) |*s| {
+        // count number of values in this section
+        var i: u16 = s.begin;
+        var first_selectable: ?u16 = null;
+        var c_val: u16 = 0;
+        var c_sec: u16 = 0;
+        while (i != s.end) {
+            const item = items[i];
+            switch (item.tag) {
+                .value => {
+                    if (switch (values[item.ptr].value) {
+                        .ro => false,
+                        .rw => true,
+                    }) {
+                        c_val += 1;
+                    }
+                },
+                .section => {
+                    c_sec += 1;
+                },
+                else => {},
+            }
+            if (c_sec + c_val == 1) {
+                first_selectable = i;
+            }
+            i += 1;
+        }
+        if (first_selectable) |first| {
+            s.cursor = first;
+            if (c_val == 1 and c_sec == 0) {
+                s.type = .one_value;
+                s.mode = .change_value;
+            }
+        }
+    }
+}
+
+var curSection: u16 = 0;
+
+fn hasCursor(item_idx: u16) bool {
+    const item: RtItem = items[item_idx];
+    return switch (item.tag) {
+        .section => true,
+        .value => switch (values[item.ptr].value) {
+            .ro => false,
+            .rw => true,
+        },
+        .label => false,
+    };
+}
 
 fn advanceCursor(dir: enum { left, right, down, up }) void {
     const sec: *RtSection = &sections[curSection];
@@ -453,100 +628,125 @@ fn advanceCursor(dir: enum { left, right, down, up }) void {
     if (sec.begin == sec.end) {
         return;
     }
-    switch (dir) {
-        .left => {
-            // first we check if we only have to scroll backwards,
-            // this is the case if the cursor item pos is not visible right now
-            if (lines[0] > items[sec.cursor].pos.line) {
-                // just decrease lines
-                lines[1] = lines[0];
-                lines[0] -= 1;
-            } else {
-                // if only one item, do not move cursor
-                if (sec.begin + 1 == sec.end) {
-                    return;
-                }
-                const start = sec.cursor; // since we cycle around we need a stop
-                while (sec.cursor >= sec.begin) {
-                    var line_changed = false;
-                    if (sec.cursor == sec.begin) {
-                        sec.cursor = sec.end - 1;
-                        const li = items[sec.cursor].last.line;
-                        if (li != lines[0] and li != lines[1]) {
-                            lines[0] = li - 1;
-                            lines[1] = li;
-                            line_changed = true;
-                        }
-                    } else {
-                        sec.cursor -= 1;
-                        if (items[sec.cursor].pos.line < lines[0]) {
-                            // decrease lines
-                            lines[1] = lines[0];
-                            lines[0] -= 1;
-                            line_changed = true;
-                        }
+    switch (sec.mode) {
+        .select_item => switch (dir) {
+            .left => {
+                // first we check if we only have to scroll backwards,
+                // this is the case if the cursor item pos is not visible right now
+                if (lines[0] > items[sec.cursor].pos.line) {
+                    // just decrease lines
+                    lines[1] = lines[0];
+                    lines[0] -= 1;
+                } else {
+                    // if only one item, do not move cursor
+                    if (sec.begin + 1 == sec.end) {
+                        return;
                     }
-                    if (start == sec.cursor or line_changed or switch (items[sec.cursor].tag) {
-                        .section, .value => true,
-                        else => false,
-                    }) break;
-                }
-            }
-        },
-        .right => {
-            // check if we have to scroll forward
-            if (lines[1] < items[sec.cursor].last.line) {
-                log.info("right,A", .{});
-                // increase lines
-                lines[0] = lines[1];
-                lines[1] += 1;
-            } else {
-                log.info("right,B", .{});
-
-                // if only one item, do not move cursor
-                if (sec.begin + 1 == sec.end) {
-                    return;
-                }
-                const start = sec.cursor; // since we cycle around we need a stop
-                while (sec.cursor < sec.end) {
-                    var line_changed = false;
-                    if (sec.cursor + 1 == sec.end) {
-                        log.info("right,C", .{});
-                        sec.cursor = sec.begin;
-                        const li = items[sec.cursor].pos.line;
-                        if (li != lines[0] and li != lines[1]) {
-                            log.info("right,D", .{});
-                            lines[0] = li;
-                            lines[1] = li + 1;
-                            line_changed = true;
+                    const start = sec.cursor; // since we cycle around we need a stop
+                    while (sec.cursor >= sec.begin) {
+                        var line_changed = false;
+                        if (sec.cursor == sec.begin) {
+                            sec.cursor = sec.end - 1;
+                            const li = items[sec.cursor].last.line;
+                            if (li != lines[0] and li != lines[1]) {
+                                lines[0] = li - 1;
+                                lines[1] = li;
+                                line_changed = true;
+                            }
+                        } else {
+                            sec.cursor -= 1;
+                            if (items[sec.cursor].pos.line < lines[0]) {
+                                // decrease lines
+                                lines[1] = lines[0];
+                                lines[0] -= 1;
+                                line_changed = true;
+                            }
                         }
-                    } else {
-                        log.info("right,E", .{});
-                        sec.cursor += 1;
-                        if (items[sec.cursor].last.line > lines[1]) {
-                            log.info("right,F", .{});
-                            // increase lines
-                            lines[0] = lines[1];
-                            lines[1] += 1;
-                            line_changed = true;
-                        }
+                        if (start == sec.cursor or line_changed or hasCursor(sec.cursor)) break;
                     }
-                    if (start == sec.cursor or line_changed or switch (items[sec.cursor].tag) {
-                        .section, .value => true,
-                        else => false,
-                    }) break;
                 }
-            }
+            },
+            .right => {
+                // check if we have to scroll forward
+                if (lines[1] < items[sec.cursor].last.line) {
+                    // log.info("right,A", .{});
+                    // increase lines
+                    lines[0] = lines[1];
+                    lines[1] += 1;
+                } else {
+                    // log.info("right,B", .{});
+                    // if only one item, do not move cursor
+                    if (sec.begin + 1 == sec.end) {
+                        return;
+                    }
+                    const start = sec.cursor; // since we cycle around we need a stop
+                    while (sec.cursor < sec.end) {
+                        var line_changed = false;
+                        if (sec.cursor + 1 == sec.end) {
+                            // log.info("right,C", .{});
+                            sec.cursor = sec.begin;
+                            const li = items[sec.cursor].pos.line;
+                            if (li != lines[0] and li != lines[1]) {
+                                // log.info("right,D", .{});
+                                lines[0] = li;
+                                lines[1] = li + 1;
+                                line_changed = true;
+                            }
+                        } else {
+                            // log.info("right,E", .{});
+                            sec.cursor += 1;
+                            if (items[sec.cursor].last.line > lines[1]) {
+                                // log.info("right,F", .{});
+                                // increase lines
+                                lines[0] = lines[1];
+                                lines[1] += 1;
+                                line_changed = true;
+                            }
+                        }
+                        if (start == sec.cursor or line_changed or hasCursor(sec.cursor)) break;
+                    }
+                }
+            },
+            .up => {
+                if (curSection > 0) {
+                    curSection = sec.parent;
+                }
+            },
+            .down => {
+                switch (items[sec.cursor].tag) {
+                    .section => {
+                        curSection = items[sec.cursor].ptr;
+                    },
+                    .value => {
+                        // should be on a selectable one
+                        sec.mode = .change_value;
+                    },
+                    else => {},
+                }
+            },
         },
-        .up => {
-            if (curSection > 0) {
-                curSection = sec.parent;
-            }
-        },
-        .down => {
-            switch (items[sec.cursor].tag) {
-                .section => {
-                    curSection = items[sec.cursor].ptr;
+        .change_value => {
+            switch (values[items[sec.cursor].ptr].value) {
+                .rw => |rw| {
+                    switch (dir) {
+                        .right => {
+                            rw.inc();
+                        },
+                        .left => {
+                            rw.dec();
+                        },
+                        .down => {},
+                        .up => {
+                            switch (sec.type) {
+                                .one_value => {
+                                    curSection = sec.parent;
+                                },
+                                .normal => {
+                                    sec.mode = .select_item;
+                                },
+                            }
+                        },
+                    }
                 },
                 else => {},
             }
@@ -566,12 +766,18 @@ fn buttonEvent(ev: Event) void {
             });
             const sec: *RtSection = &sections[curSection];
             const cItem = items[sec.cursor];
-            log.info("cursor item:{d} is at line:{d},column:{d}", .{ sec.cursor, cItem.pos.line, cItem.pos.column });
-            if (switch (cItem.tag) {
-                .section, .value => true,
-                else => false,
-            }) {
-                lcd.cursor(cItem.pos.line, cItem.pos.column, cItem.last.line, cItem.last.column);
+            // log.info("cursor item:{d} is at line:{d},column:{d}", .{ sec.cursor, cItem.pos.line, cItem.pos.column });
+            if (hasCursor(sec.cursor)) {
+                lcd.cursor(
+                    cItem.pos.line,
+                    cItem.pos.column,
+                    cItem.last.line,
+                    cItem.last.column,
+                    switch (sec.mode) {
+                        .select_item => .select,
+                        .change_value => .change,
+                    },
+                );
             } else {
                 // log.info("set cursor off", .{});
                 lcd.cursorOff();
@@ -652,9 +858,9 @@ pub fn main() !void {
         log.info("sections[{d}]:\n{any}", .{ j, s });
     }
     for (values, 0..) |v, j| {
-        log.info("values[{d}]: item={d}, size={d}, val={s}", .{ j, v.item, v.value.size, v.value.get() });
+        log.info("values[{d}]: item={d}, size={d}, val={s}", .{ j, v.item, v.value.size(), v.value.get() });
     }
-    lcd.cursor(0, 0, 0, 0);
+    lcd.cursor(0, 0, 0, 0, .select);
     time.sleep_ms(100);
     var changed = true;
     while (true) {
