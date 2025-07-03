@@ -5,11 +5,12 @@ const time = hal.time;
 const Datagram_Device = microzig.drivers.base.Datagram_Device;
 const Mutex = hal.mutex.Mutex;
 const assert = std.debug.assert;
+const Display = @import("tui/Display.zig");
 
-const CursorType = enum {
-    select,
-    change,
-};
+// const CursorType = enum {
+//     select,
+//     change,
+// };
 
 pub const line_len = 16;
 pub fn BufferedLCD(comptime NrOfLines: comptime_int) type {
@@ -35,6 +36,21 @@ pub fn BufferedLCD(comptime NrOfLines: comptime_int) type {
         cursorCol: u8 = 0,
         cursorSavedChar: u8 = ' ',
 
+        pub fn display(self: *Self) Display {
+            return .{
+                .lines = 2,
+                .columns = NrOfLines,
+                .ptr = self,
+                .vtable = &.{
+                    .write = write,
+                    .cursorOff = cursorOff,
+                    .cursor = cursor,
+                    .print = print,
+                    .readButtons = readButtons,
+                },
+            };
+        }
+
         pub fn init(dd: Datagram_Device, butOneShot: u4) Self {
             return Self{
                 .dd = dd,
@@ -43,7 +59,8 @@ pub fn BufferedLCD(comptime NrOfLines: comptime_int) type {
             };
         }
 
-        pub fn write(self: *Self, line: usize, pos: usize, str: []const u8) void {
+        pub fn write(ctx: *anyopaque, line: u16, pos: u8, str: []const u8) void {
+            const self: *Self = @ptrCast(@alignCast(ctx));
             if (line >= nLines) return;
             var modified: bool = false;
             var l = line;
@@ -73,7 +90,8 @@ pub fn BufferedLCD(comptime NrOfLines: comptime_int) type {
                 self.buf[l].stamp_in += 1;
             }
         }
-        pub fn cursorOff(self: *Self) void {
+        pub fn cursorOff(ctx: *anyopaque) void {
+            const self: *Self = @ptrCast(@alignCast(ctx));
             defer self.mx.unlock();
             self.mx.lock();
             if (self.cursorOn) {
@@ -83,7 +101,8 @@ pub fn BufferedLCD(comptime NrOfLines: comptime_int) type {
             }
             self.cursorOn = false;
         }
-        pub fn cursor(self: *Self, bLine: u16, bCol: u8, _: u16, _: u8, cursorType: CursorType) void {
+        pub fn cursor(ctx: *anyopaque, bLine: u16, bCol: u8, _: u16, _: u8, cursorType: Display.CursorType) void {
+            const self: *Self = @ptrCast(@alignCast(ctx));
             defer self.mx.unlock();
             self.mx.lock();
             //inspect the buffer
@@ -135,7 +154,8 @@ pub fn BufferedLCD(comptime NrOfLines: comptime_int) type {
         const WriteError = Datagram_Device.ConnectError || Datagram_Device.WriteError;
         const ReadError = Datagram_Device.ConnectError || Datagram_Device.ReadError;
 
-        pub fn print(self: *Self, lines: [2]u16) WriteError!void {
+        pub fn print(ctx: *anyopaque, lines: []const u16) ?void {
+            const self: *Self = @ptrCast(@alignCast(ctx));
             // insert the chars to print/update, all other are zero
             var toPrint: [2][Line.len]u8 = .{.{0} ** Line.len} ** 2;
             {
@@ -170,7 +190,7 @@ pub fn BufferedLCD(comptime NrOfLines: comptime_int) type {
                 for (0..Line.len) |j| {
                     const c = toPrint[i][j];
                     if (c != 0) {
-                        try self.write_datagram(0x61, &.{ @intCast(1 - i), @intCast(j), c });
+                        self.write_datagram(0x61, &.{ @intCast(1 - i), @intCast(j), c }) catch return null;
                         time.sleep_ms(20);
                         // std.log.info("send at {d},{d} '{c}'", .{ i, j, c });
                     }
@@ -178,13 +198,20 @@ pub fn BufferedLCD(comptime NrOfLines: comptime_int) type {
             }
         }
 
-        pub fn read_buttons(self: *Self) ReadError!u4 {
+        pub fn readButtons(ctx: *anyopaque) ?Display.Button {
+            const self: *Self = @ptrCast(@alignCast(ctx));
             var buf: [1]u8 = .{0};
-            _ = try self.read_datagram(0x05, &buf);
+            _ = self.read_datagram(0x05, &buf) catch return null;
             const but: u4 = @intCast(buf[0] ^ 0x0f);
             const res = but & ~(self.butLast & self.butOneShot);
             self.butLast = but;
-            return res;
+            return switch (res) {
+                0b0001 => .up,
+                0b0010 => .left,
+                0b0100 => .right,
+                0b1000 => .down,
+                else => .none,
+            };
             // a l o r
             // 1 1 1 0
             // 1 1 0 1
