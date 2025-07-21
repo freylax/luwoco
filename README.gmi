@@ -1,0 +1,44 @@
+
+```
+-----------------------------------------------
+Olimex lcd
+Power    | RST | 3V3 | 5V | GND |
+
+Analog               | A4 | A5  |
+                     | SDA| SCL |
+
+Digital                         ... | D1 | D0 |
+	                                | TXD| RXD|
+                                 
+          |SCL | SDA | AREF | GND | 
+----------------------------------------------                                      
+RP2040 Pico
+
+    40 |  39  |  38  | 37    | 36  |
+   VBUS| VSYS | GND  |3V3_EN | 3V3 |
+
+     1 |   2  |      |  6       |  7       |
+	Tx | Rx	  |	     |	GP4     | GP5      |
+	Uart0     |	     | I2C0 SDA | I2C0 SCL |
+
+----------------------------------------------
+
+LCD Connection
+O LCD  |   PICO
+-------+-------
+5V     | VBUS
+3V3    | 3V3
+GND    | GND
+SCL    | PIN7 I2C0 SCL 
+SDA    | PIN6 I2C0 SDA     
+
+
+Serial Console Connection
+USB-Serial |  PICO
+-----------+---------
+Tx(red)    | Rx Uart0 (2)
+Rx(green)  | Tx Uart0 (1)
+	
+```
+
+ 

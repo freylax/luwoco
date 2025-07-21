@@ -1,5 +1,6 @@
 const std = @import("std");
 const Value = @import("items.zig").Value;
+const Event = @import("Event.zig");
 
 pub const StrValue = struct {
     str: []const u8 = "Test",
@@ -21,6 +22,7 @@ pub const IntValue = struct {
     min: u8 = 0,
     max: u8,
     val: u8,
+    id: ?u16 = null,
     buf: [4]u8 = [_]u8{' '} ** 4,
     // fn size(max: u8) u8 {
     //     return 1 + if (max > 99) 3 else if (max > 9) 2 else 1;
@@ -39,20 +41,30 @@ pub const IntValue = struct {
         _ = std.fmt.formatIntBuf(&self.buf, self.val, 10, .lower, .{ .alignment = .right, .width = 4 });
         return &self.buf;
     }
-    fn inc(ctx: *anyopaque) void {
+    fn event(self: *IntValue) ?Event {
+        if (self.id) |id| {
+            return .{ .id = id, .pl = .{ .value = self.val } };
+        } else {
+            return null;
+        }
+    }
+
+    fn inc(ctx: *anyopaque) ?Event {
         const self: *IntValue = @ptrCast(@alignCast(ctx));
         if (self.val >= self.max or self.val < self.min) {
             self.val = self.min;
         } else {
             self.val += 1;
         }
+        return self.event();
     }
-    fn dec(ctx: *anyopaque) void {
+    fn dec(ctx: *anyopaque) ?Event {
         const self: *IntValue = @ptrCast(@alignCast(ctx));
         if (self.val > self.max or self.val <= self.min) {
             self.val = self.max;
         } else {
             self.val -= 1;
         }
+        return self.event();
     }
 };

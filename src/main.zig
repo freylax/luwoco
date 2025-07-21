@@ -47,36 +47,42 @@ const led = gpio.num(25);
 
 const i2c0 = i2c.instance.num(0);
 
-// var buttons: std.atomic.Value(u8) = std.atomic.Value(u8).init(0);
-
-const Event = enum(u32) {
-    None,
-    ButtonEsc,
-    ButtonDec,
-    ButtonInc,
-    ButtonRet,
-    _,
+const EventId = enum(u16) {
+    Setup,
+    BackLight,
+    pub fn id(self: EventId) u16 {
+        return @intFromEnum(self);
+    }
 };
 
-const line_len = olimex_lcd.line_len;
-const line_end = line_len - 1;
+const EventTag = enum {
+    tui,
+};
 
-var back_light = IntValue{ .min = 0, .max = 10, .val = 3 };
+const Event = struct {
+    id: EventId,
+    pl: union(EventTag) {
+        tui: TUI.Event.PayLoad,
+    },
+};
+
+var back_light = IntValue{ .min = 0, .max = 255, .val = 0, .id = EventId.BackLight.id() };
 
 const items: []const Item = &.{
     .{
         .popup = .{
-            .str = " Popup A\n",
+            .id = EventId.Setup.id(),
+            .str = " Setup\n",
             .items = &.{
-                // .{ .label = "Backlight:" },
+                .{ .label = "Backlight:" },
                 .{ .value = back_light.value() },
             },
         },
     },
     .{ .popup = .{
-        .str = " Popup B\n",
+        .str = " Noe\n",
         .items = &.{
-            .{ .label = " Label C\n" },
+            .{ .label = " Das ist\neine lange\nGeschichte." },
             .{ .label = " Label D" },
         },
     } },
@@ -150,7 +156,6 @@ pub fn main() !void {
     // button 1 and 4 are one shot buttons
     var lcd = LCD.init(i2c_device.datagram_device(), 0b1001);
     var display = lcd.display();
-    // var tuiImpl: TUI.Impl(tree) = .{};
     var tuiImpl = TuiImpl.init(display);
     var tui = tuiImpl.tui();
     time.sleep_ms(100);
@@ -190,46 +195,56 @@ pub fn main() !void {
     // for (values, 0..) |v, j| {
     //     log.info("values[{d}]: item={d}, size={d}, val={s}", .{ j, v.item, v.value.size(), v.value.get() });
     // }
+
     display.cursor(0, 0, 0, 0, .select);
     time.sleep_ms(100);
-    var changed = true;
     while (true) {
-        // log.info("Print", .{});
-        // if (changed) {
-        //     log.info("curSection:{d}, lines:{d},{d} ,cursor:{d}", .{ curSection, lines[0], lines[1], sec.cursor });
-        // }
-        changed = false;
-
-        if (tui.print()) {
-            // log.info("print", .{});
-        } else |err| switch (err) {
-            error.DisplayError => log.err("DisplayError", .{}),
-            // error.IoError => log.err("IoError", .{}),
-            // error.Timeout => log.err("Timeout", .{}),
-            // error.DeviceBusy => log.err("DeviceBusy", .{}),
-            // error.Unsupported => log.err("Unsupported", .{}),
-            // error.NotConnected => log.err("NotConnected", .{}),
-        }
+        var event: ?Event = null;
+        tui.writeValues();
+        if (tui.print()) {} else |_| {}
         time.sleep_ms(100);
-        // time.sleep_ms(2000);
         const read_buttons = display.readButtons();
-        // log.info("clear", .{});
         if (read_buttons) |b| {
             if (b != .none) {
                 // fifo.write_blocking(@intFromEnum(ev));
-                tui.buttonEvent(b);
-                changed = true;
+                if (tui.buttonEvent(b)) |ev| {
+                    log.info("tui event with id:{d}", .{ev.id});
+                    event = .{ .id = @enumFromInt(ev.id), .pl = .{ .tui = ev.pl } };
+                }
             }
-        } else |err| switch (err) {
-            error.DisplayError => log.err("DisplayError", .{}),
-
-            // error.IoError => log.err("IoError", .{}),
-            // error.Timeout => log.err("Timeout", .{}),
-            // error.DeviceBusy => log.err("DeviceBusy", .{}),
-            // error.Unsupported => log.err("Unsupported", .{}),
-            // error.NotConnected => log.err("NotConnected", .{}),
-            // error.BufferOverrun => log.err("BufferOverrun", .{}),
+        } else |_| {}
+        if (lcd.lastError) |e| {
+            switch (e) {
+                error.IoError => log.err("IoError", .{}),
+                error.Timeout => log.err("Timeout", .{}),
+                error.DeviceBusy => log.err("DeviceBusy", .{}),
+                error.Unsupported => log.err("Unsupported", .{}),
+                error.NotConnected => log.err("NotConnected", .{}),
+                error.BufferOverrun => log.err("BufferOverrun", .{}),
+            }
+            lcd.lastError = null;
         }
+        if (event) |ev| {
+            switch (ev.id) {
+                .Setup => {
+                    switch (ev.pl.tui.section) {
+                        .enter => {
+                            log.info("Enter Setup Event", .{});
+                        },
+                        .leave => {
+                            log.info("Leave Setup Event", .{});
+                        },
+                    }
+                },
+                .BackLight => {
+                    _ = lcd.setBackLight(ev.pl.tui.value);
+                },
+                // else => {
+                //     log.info("Unhandled Event", .{});
+                // },
+            }
+        }
+
         //    time.sleep_ms(100);
     }
 }

@@ -7,11 +7,6 @@ const Mutex = hal.mutex.Mutex;
 const assert = std.debug.assert;
 const Display = @import("tui/Display.zig");
 
-// const CursorType = enum {
-//     select,
-//     change,
-// };
-
 pub const line_len = 16;
 pub fn BufferedLCD(comptime NrOfLines: comptime_int) type {
     assert(NrOfLines >= 2);
@@ -35,7 +30,7 @@ pub fn BufferedLCD(comptime NrOfLines: comptime_int) type {
         cursorLine: u16 = 0,
         cursorCol: u8 = 0,
         cursorSavedChar: u8 = ' ',
-
+        lastError: ?Error = null,
         pub fn display(self: *Self) Display {
             return .{
                 .lines = 2,
@@ -153,7 +148,7 @@ pub fn BufferedLCD(comptime NrOfLines: comptime_int) type {
         }
         const WriteError = Datagram_Device.ConnectError || Datagram_Device.WriteError;
         const ReadError = Datagram_Device.ConnectError || Datagram_Device.ReadError;
-
+        const Error = WriteError || ReadError;
         pub fn print(ctx: *anyopaque, lines: []const u16) ?void {
             const self: *Self = @ptrCast(@alignCast(ctx));
             // insert the chars to print/update, all other are zero
@@ -190,7 +185,10 @@ pub fn BufferedLCD(comptime NrOfLines: comptime_int) type {
                 for (0..Line.len) |j| {
                     const c = toPrint[i][j];
                     if (c != 0) {
-                        self.write_datagram(0x61, &.{ @intCast(1 - i), @intCast(j), c }) catch return null;
+                        self.write_datagram(0x61, &.{ @intCast(1 - i), @intCast(j), c }) catch |e| {
+                            self.lastError = e;
+                            return null;
+                        };
                         time.sleep_ms(20);
                         // std.log.info("send at {d},{d} '{c}'", .{ i, j, c });
                     }
@@ -201,7 +199,10 @@ pub fn BufferedLCD(comptime NrOfLines: comptime_int) type {
         pub fn readButtons(ctx: *anyopaque) ?Display.Button {
             const self: *Self = @ptrCast(@alignCast(ctx));
             var buf: [1]u8 = .{0};
-            _ = self.read_datagram(0x05, &buf) catch return null;
+            _ = self.read_datagram(0x05, &buf) catch |e| {
+                self.lastError = e;
+                return null;
+            };
             const but: u4 = @intCast(buf[0] ^ 0x0f);
             const res = but & ~(self.butLast & self.butOneShot);
             self.butLast = but;
@@ -219,6 +220,14 @@ pub fn BufferedLCD(comptime NrOfLines: comptime_int) type {
             // 0 1 0 0
             // 1 0 1 1  a & ~( l & o)
             // 1 0 0 1
+        }
+
+        pub fn setBackLight(self: *Self, val: u8) ?void {
+            self.write_datagram(0x62, &.{val}) catch |e| {
+                self.lastError = e;
+                return null;
+            };
+            time.sleep_ms(20);
         }
 
         /// Sends command data to the lcd

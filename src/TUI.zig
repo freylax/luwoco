@@ -1,3 +1,4 @@
+const std = @import("std");
 const Pos = @import("tui/Pos.zig");
 const Display = @import("tui/Display.zig");
 const Tree = @import("tui/Tree.zig");
@@ -5,19 +6,20 @@ const Tree = @import("tui/Tree.zig");
 const Item = Tree.Item;
 const ItemTag = Tree.ItemTag;
 const Value = @import("tui/items.zig").Value;
+pub const Event = @import("tui/Event.zig");
 
 const TUI = @This();
 
 ptr: *anyopaque,
 vtable: *const VTable,
 pub const VTable = struct {
-    buttonEvent: *const fn (*anyopaque, Display.Button) void,
+    buttonEvent: *const fn (*anyopaque, Display.Button) ?Event,
     writeValues: *const fn (*anyopaque) void,
     print: *const fn (*anyopaque) ?void,
 };
 
-pub inline fn buttonEvent(t: TUI, b: Display.Button) void {
-    t.vtable.buttonEvent(t.ptr, b);
+pub inline fn buttonEvent(t: TUI, b: Display.Button) ?Event {
+    return t.vtable.buttonEvent(t.ptr, b);
 }
 pub inline fn writeValues(t: TUI) void {
     t.vtable.writeValues(t.ptr);
@@ -59,6 +61,7 @@ const RtSection = struct {
     cursor: u16 = 0, // the current cursor item (down)
     parent: u16 = 0, // parent section (up)
     lines: [2]u16, // displayed lines
+    id: ?u16, // event id if available
 };
 
 const RtValue = struct {
@@ -98,7 +101,14 @@ pub fn Impl(comptime tree: Tree) type {
             var idx = Idx{ .item = 1, .section = 1, .value = 0 };
             // the root item
             self.items[0] = .{ .tag = .section, .pos = pos, .ptr = 0, .last = pos };
-            self.sections[0] = .{ .begin = 1, .end = @intCast(1 + self.tree.items.len), .cursor = 1, .parent = 0, .lines = .{ 0, 1 } };
+            self.sections[0] = .{
+                .begin = 1,
+                .end = @intCast(1 + self.tree.items.len),
+                .cursor = 1,
+                .parent = 0,
+                .lines = .{ 0, 1 },
+                .id = null, // no event for root section
+            };
             initMenuR(self, self.tree.items, &pos, &idx, 0);
             checkSections(self);
 
@@ -136,6 +146,7 @@ pub fn Impl(comptime tree: Tree) type {
                             .end = 0,
                             .parent = parent,
                             .lines = .{ 0, 0 },
+                            .id = pop.id,
                         }; // this will be filled in initMenuTail
                         pos.next(pop.str, tree.line_end);
                         idx.section += 1;
@@ -159,6 +170,7 @@ pub fn Impl(comptime tree: Tree) type {
                                 .{ line, line + 1 }
                             else
                                 .{ self.items[j].pos.line, line },
+                            .id = emb.id,
                         };
                         pos.next(emb.str, tree.line_end);
                         const this_section = idx.section;
@@ -185,7 +197,10 @@ pub fn Impl(comptime tree: Tree) type {
                             .last = pos.*.skip_(val.size() - 1, tree.line_end),
                         };
                         pos.skip(val.size(), tree.line_end);
-                        self.values[idx.value] = .{ .item = @intCast(j), .value = val };
+                        self.values[idx.value] = .{
+                            .item = @intCast(j),
+                            .value = val,
+                        };
                         idx.value += 1;
                     },
                 }
@@ -271,12 +286,13 @@ pub fn Impl(comptime tree: Tree) type {
             };
         }
 
-        fn advanceCursor(self: *Self, dir: Display.Button) void {
+        fn advanceCursor(self: *Self, dir: Display.Button) ?Event {
             const sec: *RtSection = &self.sections[self.curSection];
             const lines = &sec.lines;
+            var event: ?Event = null;
             // test if there are members in this section
             if (sec.begin == sec.end) {
-                return;
+                return event;
             }
             switch (sec.mode) {
                 .select_item => switch (dir) {
@@ -291,7 +307,7 @@ pub fn Impl(comptime tree: Tree) type {
                         } else {
                             // if only one item, do not move cursor
                             if (sec.begin + 1 == sec.end) {
-                                return;
+                                return event;
                             }
                             const start = sec.cursor; // since we cycle around we need a stop
                             while (sec.cursor >= sec.begin) {
@@ -328,7 +344,7 @@ pub fn Impl(comptime tree: Tree) type {
                             // log.info("right,B", .{});
                             // if only one item, do not move cursor
                             if (sec.begin + 1 == sec.end) {
-                                return;
+                                return event;
                             }
                             const start = sec.cursor; // since we cycle around we need a stop
                             while (sec.cursor < sec.end) {
@@ -360,6 +376,9 @@ pub fn Impl(comptime tree: Tree) type {
                     },
                     .up => {
                         if (self.curSection > 0) {
+                            if (sec.id) |id| {
+                                event = .{ .id = id, .pl = .{ .section = .leave } };
+                            }
                             self.curSection = sec.parent;
                         }
                     },
@@ -367,6 +386,10 @@ pub fn Impl(comptime tree: Tree) type {
                         switch (self.items[sec.cursor].tag) {
                             .section => {
                                 self.curSection = self.items[sec.cursor].ptr;
+                                const sec_: *RtSection = &self.sections[self.curSection];
+                                if (sec_.id) |id| {
+                                    event = .{ .id = id, .pl = .{ .section = .enter } };
+                                }
                             },
                             .value => {
                                 // should be on a selectable one
@@ -381,16 +404,19 @@ pub fn Impl(comptime tree: Tree) type {
                         .rw => |rw| {
                             switch (dir) {
                                 .right => {
-                                    rw.inc();
+                                    event = rw.inc();
                                 },
                                 .left => {
-                                    rw.dec();
+                                    event = rw.dec();
                                 },
                                 .down => {},
                                 .none => {},
                                 .up => {
                                     switch (sec.type) {
                                         .one_value => {
+                                            if (sec.id) |id| {
+                                                event = .{ .id = id, .pl = .{ .section = .leave } };
+                                            }
                                             self.curSection = sec.parent;
                                         },
                                         .normal => {
@@ -404,12 +430,13 @@ pub fn Impl(comptime tree: Tree) type {
                     }
                 },
             }
+            return event;
         }
 
-        fn buttonEventImpl(ctx: *anyopaque, button: Display.Button) void {
+        fn buttonEventImpl(ctx: *anyopaque, button: Display.Button) ?Event {
             const self: *Self = @ptrCast(@alignCast(ctx));
 
-            advanceCursor(self, button);
+            const ev = advanceCursor(self, button);
             const sec: *RtSection = &self.sections[self.curSection];
             const cItem = self.items[sec.cursor];
             // log.info("cursor item:{d} is at line:{d},column:{d}", .{ sec.cursor, cItem.pos.line, cItem.pos.column });
@@ -428,6 +455,7 @@ pub fn Impl(comptime tree: Tree) type {
                 // log.info("set cursor off", .{});
                 self.display.cursorOff();
             }
+            return ev;
         }
 
         fn writeValuesImpl(ctx: *anyopaque) void {

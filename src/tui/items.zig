@@ -1,3 +1,5 @@
+const Event = @import("Event.zig");
+
 pub const ItemTag = enum(u2) {
     popup,
     embed,
@@ -8,11 +10,13 @@ pub const ItemTag = enum(u2) {
 pub const ItemTagLen = @typeInfo(ItemTag).@"enum".fields.len;
 
 pub const Embed = struct {
+    id: ?u16 = null,
     str: []const u8,
     items: []const Item,
 };
 
 pub const Popup = struct {
+    id: ?u16 = null,
     str: []const u8,
     items: []const Item,
 };
@@ -35,22 +39,23 @@ pub const RoValue = struct {
 };
 
 pub const RwValue = struct {
+    id: ?u16 = null,
     size: u8,
     ptr: *anyopaque,
     vtable: *const VTable,
     pub const VTable = struct {
         get: *const fn (*anyopaque) []const u8,
-        inc: *const fn (*anyopaque) void,
-        dec: *const fn (*anyopaque) void,
+        inc: *const fn (*anyopaque) ?Event,
+        dec: *const fn (*anyopaque) ?Event,
     };
     pub inline fn get(v: RwValue) []const u8 {
         return v.vtable.get(v.ptr);
     }
-    pub inline fn inc(v: RwValue) void {
-        v.vtable.inc(v.ptr);
+    pub inline fn inc(v: RwValue) ?Event {
+        return v.vtable.inc(v.ptr);
     }
-    pub inline fn dec(v: RwValue) void {
-        v.vtable.dec(v.ptr);
+    pub inline fn dec(v: RwValue) ?Event {
+        return v.vtable.dec(v.ptr);
     }
 };
 
