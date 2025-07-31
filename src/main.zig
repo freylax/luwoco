@@ -1,6 +1,7 @@
 const std = @import("std");
 const microzig = @import("microzig");
 const olimex_lcd = @import("olimex_lcd.zig");
+const Buttons = @import("tui/Buttons.zig");
 const Tree = @import("tui/Tree.zig");
 const TUI = @import("TUI.zig");
 const Item = Tree.Item;
@@ -66,6 +67,13 @@ const Event = struct {
     },
 };
 
+const std_button_map: []const struct { u8, Buttons.Event } = &.{
+    .{ 0b0001, .up },
+    .{ 0b0010, .left },
+    .{ 0b0100, .right },
+    .{ 0b1000, .down },
+};
+
 var back_light = IntValue{ .min = 0, .max = 255, .val = 0, .id = EventId.BackLight.id() };
 
 const items: []const Item = &.{
@@ -120,7 +128,7 @@ const items: []const Item = &.{
 
 const tree = Tree.create(items, 16 - 1);
 const LCD = olimex_lcd.BufferedLCD(tree.bufferLines);
-const TuiImpl = TUI.Impl(tree);
+const TuiImpl = TUI.Impl(tree, std_button_map);
 // fn core1() void {
 //     while (true) {
 //         const ev: Event = @enumFromInt(fifo.read_blocking());
@@ -156,6 +164,7 @@ pub fn main() !void {
     // button 1 and 4 are one shot buttons
     var lcd = LCD.init(i2c_device.datagram_device(), 0b1001);
     var display = lcd.display();
+    // var buttons = lcd.buttons();
     var tuiImpl = TuiImpl.init(display);
     var tui = tuiImpl.tui();
     time.sleep_ms(100);
@@ -198,17 +207,19 @@ pub fn main() !void {
 
     display.cursor(0, 0, 0, 0, .select);
     time.sleep_ms(100);
+    // var last_buttons: u8 = 0;
     while (true) {
         var event: ?Event = null;
         tui.writeValues();
         if (tui.print()) {} else |_| {}
         time.sleep_ms(100);
+        // const current_buttons = buttons.read();
         const read_buttons = display.readButtons();
         if (read_buttons) |b| {
             if (b != .none) {
-                // fifo.write_blocking(@intFromEnum(ev));
+                // last_buttons = b;
                 if (tui.buttonEvent(b)) |ev| {
-                    log.info("tui event with id:{d}", .{ev.id});
+                    // log.info("tui event with id:{d}", .{ev.id});
                     event = .{ .id = @enumFromInt(ev.id), .pl = .{ .tui = ev.pl } };
                 }
             }

@@ -1,6 +1,7 @@
 const std = @import("std");
 const Pos = @import("tui/Pos.zig");
 const Display = @import("tui/Display.zig");
+const ButtonEvent = @import("tui/Buttons.zig").Event;
 const Tree = @import("tui/Tree.zig");
 
 const Item = Tree.Item;
@@ -43,19 +44,31 @@ const RtItem = struct {
     last: Pos, // pos of last printable char
 };
 
-const SectionType = enum(u2) {
-    normal,
-    one_value,
-};
-
-const SectionMode = enum(u2) {
-    select_item,
-    change_value,
-};
-
 const RtSection = struct {
-    type: SectionType = .normal,
-    mode: SectionMode = .select_item,
+    const Mode = enum(u2) {
+        select_item,
+        change_value,
+    };
+
+    const Tag = enum {
+        standard,
+        one_value,
+        direct,
+    };
+
+    const Direct = struct {
+        one_shot: u8,
+        button_map: ?[]const struct { u8, u16 }, // mapping of button mask to values
+    };
+
+    const Type = union(Tag) {
+        standard: Mode,
+        one_value: void,
+        direct: Direct,
+    };
+
+    type: Type = .{ .standard = .select_item },
+    // mode: SectionMode = .select_item,
     begin: u16, // first item
     end: u16, // item which does not belong to this section
     cursor: u16 = 0, // the current cursor item (down)
@@ -69,7 +82,7 @@ const RtValue = struct {
     value: Value,
 };
 
-pub fn Impl(comptime tree: Tree) type {
+pub fn Impl(comptime tree: Tree, standard_map_: []const struct { u8, ButtonEvent }) type {
     return struct {
         const Self = @This();
         const nrRtSections = tree.nrItems[@intFromEnum(ItemTag.popup)] //
@@ -77,6 +90,16 @@ pub fn Impl(comptime tree: Tree) type {
         const nrRtValues = tree.nrItems[@intFromEnum(ItemTag.value)];
         const nrRtLabels = tree.nrItems[@intFromEnum(ItemTag.label)];
         const nrRtItems = nrRtSections + nrRtValues + nrRtLabels;
+        const standard_map = standard_map_;
+        const one_shot = blk: {
+            var x: u8 = 0;
+            for (standard_map_) |i| {
+                if (i[1] == .up or i[1] == .down) {
+                    x |= i[0];
+                }
+            }
+            break :blk x;
+        };
 
         display: Display = undefined,
         tree: Tree = tree,
@@ -268,7 +291,7 @@ pub fn Impl(comptime tree: Tree) type {
                     s.cursor = first;
                     if (c_val == 1 and c_sec == 0) {
                         s.type = .one_value;
-                        s.mode = .change_value;
+                        // s.mode = .change_value;
                     }
                 }
             }
@@ -294,112 +317,146 @@ pub fn Impl(comptime tree: Tree) type {
             if (sec.begin == sec.end) {
                 return event;
             }
-            switch (sec.mode) {
-                .select_item => switch (dir) {
-                    .none => {},
-                    .left => {
-                        // first we check if we only have to scroll backwards,
-                        // this is the case if the cursor item pos is not visible right now
-                        if (lines[0] > self.items[sec.cursor].pos.line) {
-                            // just decrease lines
-                            lines[1] = lines[0];
-                            lines[0] -= 1;
-                        } else {
-                            // if only one item, do not move cursor
-                            if (sec.begin + 1 == sec.end) {
-                                return event;
-                            }
-                            const start = sec.cursor; // since we cycle around we need a stop
-                            while (sec.cursor >= sec.begin) {
-                                var line_changed = false;
-                                if (sec.cursor == sec.begin) {
-                                    sec.cursor = sec.end - 1;
-                                    const li = self.items[sec.cursor].last.line;
-                                    if (li != lines[0] and li != lines[1]) {
-                                        lines[0] = li - 1;
-                                        lines[1] = li;
-                                        line_changed = true;
-                                    }
+            switch (sec.type) {
+                .standard => |*mode| {
+                    switch (mode.*) {
+                        .select_item => switch (dir) {
+                            .none => {},
+                            .left => {
+                                // first we check if we only have to scroll backwards,
+                                // this is the case if the cursor item pos is not visible right now
+                                if (lines[0] > self.items[sec.cursor].pos.line) {
+                                    // just decrease lines
+                                    lines[1] = lines[0];
+                                    lines[0] -= 1;
                                 } else {
-                                    sec.cursor -= 1;
-                                    if (self.items[sec.cursor].pos.line < lines[0]) {
-                                        // decrease lines
-                                        lines[1] = lines[0];
-                                        lines[0] -= 1;
-                                        line_changed = true;
+                                    // if only one item, do not move cursor
+                                    if (sec.begin + 1 == sec.end) {
+                                        return event;
                                     }
-                                }
-                                if (start == sec.cursor or line_changed or self.hasCursor(sec.cursor)) break;
-                            }
-                        }
-                    },
-                    .right => {
-                        // check if we have to scroll forward
-                        if (lines[1] < self.items[sec.cursor].last.line) {
-                            // log.info("right,A", .{});
-                            // increase lines
-                            lines[0] = lines[1];
-                            lines[1] += 1;
-                        } else {
-                            // log.info("right,B", .{});
-                            // if only one item, do not move cursor
-                            if (sec.begin + 1 == sec.end) {
-                                return event;
-                            }
-                            const start = sec.cursor; // since we cycle around we need a stop
-                            while (sec.cursor < sec.end) {
-                                var line_changed = false;
-                                if (sec.cursor + 1 == sec.end) {
-                                    // log.info("right,C", .{});
-                                    sec.cursor = sec.begin;
-                                    const li = self.items[sec.cursor].pos.line;
-                                    if (li != lines[0] and li != lines[1]) {
-                                        // log.info("right,D", .{});
-                                        lines[0] = li;
-                                        lines[1] = li + 1;
-                                        line_changed = true;
+                                    const start = sec.cursor; // since we cycle around we need a stop
+                                    while (sec.cursor >= sec.begin) {
+                                        var line_changed = false;
+                                        if (sec.cursor == sec.begin) {
+                                            sec.cursor = sec.end - 1;
+                                            const li = self.items[sec.cursor].last.line;
+                                            if (li != lines[0] and li != lines[1]) {
+                                                lines[0] = li - 1;
+                                                lines[1] = li;
+                                                line_changed = true;
+                                            }
+                                        } else {
+                                            sec.cursor -= 1;
+                                            if (self.items[sec.cursor].pos.line < lines[0]) {
+                                                // decrease lines
+                                                lines[1] = lines[0];
+                                                lines[0] -= 1;
+                                                line_changed = true;
+                                            }
+                                        }
+                                        if (start == sec.cursor or line_changed or self.hasCursor(sec.cursor)) break;
                                     }
-                                } else {
-                                    // log.info("right,E", .{});
-                                    sec.cursor += 1;
-                                    if (self.items[sec.cursor].last.line > lines[1]) {
-                                        // log.info("right,F", .{});
-                                        // increase lines
-                                        lines[0] = lines[1];
-                                        lines[1] += 1;
-                                        line_changed = true;
-                                    }
-                                }
-                                if (start == sec.cursor or line_changed or self.hasCursor(sec.cursor)) break;
-                            }
-                        }
-                    },
-                    .up => {
-                        if (self.curSection > 0) {
-                            if (sec.id) |id| {
-                                event = .{ .id = id, .pl = .{ .section = .leave } };
-                            }
-                            self.curSection = sec.parent;
-                        }
-                    },
-                    .down => {
-                        switch (self.items[sec.cursor].tag) {
-                            .section => {
-                                self.curSection = self.items[sec.cursor].ptr;
-                                const sec_: *RtSection = &self.sections[self.curSection];
-                                if (sec_.id) |id| {
-                                    event = .{ .id = id, .pl = .{ .section = .enter } };
                                 }
                             },
-                            .value => {
-                                // should be on a selectable one
-                                sec.mode = .change_value;
+                            .right => {
+                                // check if we have to scroll forward
+                                if (lines[1] < self.items[sec.cursor].last.line) {
+                                    // log.info("right,A", .{});
+                                    // increase lines
+                                    lines[0] = lines[1];
+                                    lines[1] += 1;
+                                } else {
+                                    // log.info("right,B", .{});
+                                    // if only one item, do not move cursor
+                                    if (sec.begin + 1 == sec.end) {
+                                        return event;
+                                    }
+                                    const start = sec.cursor; // since we cycle around we need a stop
+                                    while (sec.cursor < sec.end) {
+                                        var line_changed = false;
+                                        if (sec.cursor + 1 == sec.end) {
+                                            // log.info("right,C", .{});
+                                            sec.cursor = sec.begin;
+                                            const li = self.items[sec.cursor].pos.line;
+                                            if (li != lines[0] and li != lines[1]) {
+                                                // log.info("right,D", .{});
+                                                lines[0] = li;
+                                                lines[1] = li + 1;
+                                                line_changed = true;
+                                            }
+                                        } else {
+                                            // log.info("right,E", .{});
+                                            sec.cursor += 1;
+                                            if (self.items[sec.cursor].last.line > lines[1]) {
+                                                // log.info("right,F", .{});
+                                                // increase lines
+                                                lines[0] = lines[1];
+                                                lines[1] += 1;
+                                                line_changed = true;
+                                            }
+                                        }
+                                        if (start == sec.cursor or line_changed or self.hasCursor(sec.cursor)) break;
+                                    }
+                                }
                             },
-                            else => {},
-                        }
-                    },
+                            .up => {
+                                if (self.curSection > 0) {
+                                    if (sec.id) |id| {
+                                        event = .{ .id = id, .pl = .{ .section = .leave } };
+                                    }
+                                    self.curSection = sec.parent;
+                                }
+                            },
+                            .down => {
+                                switch (self.items[sec.cursor].tag) {
+                                    .section => {
+                                        self.curSection = self.items[sec.cursor].ptr;
+                                        const sec_: *RtSection = &self.sections[self.curSection];
+                                        if (sec_.id) |id| {
+                                            event = .{ .id = id, .pl = .{ .section = .enter } };
+                                        }
+                                    },
+                                    .value => {
+                                        // should be on a selectable one
+                                        mode.* = .change_value;
+                                    },
+                                    else => {},
+                                }
+                            },
+                        },
+                        .change_value => {
+                            switch (self.values[self.items[sec.cursor].ptr].value) {
+                                .rw => |rw| {
+                                    switch (dir) {
+                                        .right => {
+                                            event = rw.inc();
+                                        },
+                                        .left => {
+                                            event = rw.dec();
+                                        },
+                                        .down => {},
+                                        .none => {},
+                                        .up => {
+                                            // switch (sec.type) {
+                                            //     .one_value => {
+                                            //         if (sec.id) |id| {
+                                            //             event = .{ .id = id, .pl = .{ .section = .leave } };
+                                            //         }
+                                            //         self.curSection = sec.parent;
+                                            //     },
+                                            // .normal => {
+                                            mode.* = .select_item;
+                                            // },
+                                            // }
+                                        },
+                                    }
+                                },
+                                else => {},
+                            }
+                        },
+                    }
                 },
-                .change_value => {
+                .one_value => {
                     switch (self.values[self.items[sec.cursor].ptr].value) {
                         .rw => |rw| {
                             switch (dir) {
@@ -412,23 +469,17 @@ pub fn Impl(comptime tree: Tree) type {
                                 .down => {},
                                 .none => {},
                                 .up => {
-                                    switch (sec.type) {
-                                        .one_value => {
-                                            if (sec.id) |id| {
-                                                event = .{ .id = id, .pl = .{ .section = .leave } };
-                                            }
-                                            self.curSection = sec.parent;
-                                        },
-                                        .normal => {
-                                            sec.mode = .select_item;
-                                        },
+                                    if (sec.id) |id| {
+                                        event = .{ .id = id, .pl = .{ .section = .leave } };
                                     }
+                                    self.curSection = sec.parent;
                                 },
                             }
                         },
                         else => {},
                     }
                 },
+                .direct => {},
             }
             return event;
         }
@@ -446,9 +497,12 @@ pub fn Impl(comptime tree: Tree) type {
                     cItem.pos.column,
                     cItem.last.line,
                     cItem.last.column,
-                    switch (sec.mode) {
-                        .select_item => .select,
-                        .change_value => .change,
+                    switch (sec.type) {
+                        .standard => |mode| switch (mode) {
+                            .select_item => .select,
+                            .change_value => .change,
+                        },
+                        else => .change,
                     },
                 );
             } else {
