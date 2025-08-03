@@ -1,7 +1,6 @@
 const std = @import("std");
 const Pos = @import("tui/Pos.zig");
 const Display = @import("tui/Display.zig");
-const ButtonEvent = @import("tui/Buttons.zig").Event;
 const Tree = @import("tui/Tree.zig");
 
 const Item = Tree.Item;
@@ -14,12 +13,12 @@ const TUI = @This();
 ptr: *anyopaque,
 vtable: *const VTable,
 pub const VTable = struct {
-    buttonEvent: *const fn (*anyopaque, Display.Button) ?Event,
+    buttonEvent: *const fn (*anyopaque, u8) []const Event,
     writeValues: *const fn (*anyopaque) void,
     print: *const fn (*anyopaque) ?void,
 };
 
-pub inline fn buttonEvent(t: TUI, b: Display.Button) ?Event {
+pub inline fn buttonEvent(t: TUI, b: u8) []const Event {
     return t.vtable.buttonEvent(t.ptr, b);
 }
 pub inline fn writeValues(t: TUI) void {
@@ -82,7 +81,16 @@ const RtValue = struct {
     value: Value,
 };
 
-pub fn Impl(comptime tree: Tree, standard_map_: []const struct { u8, ButtonEvent }) type {
+pub const ButtonSemantics = enum {
+    escape,
+    left,
+    right,
+    activate,
+};
+
+pub const ButtonSemanticsLen = @typeInfo(ButtonSemantics).@"enum".fields.len;
+
+pub fn Impl(comptime tree: Tree, button_masks_: []const u8) type {
     return struct {
         const Self = @This();
         const nrRtSections = tree.nrItems[@intFromEnum(ItemTag.popup)] //
@@ -90,17 +98,9 @@ pub fn Impl(comptime tree: Tree, standard_map_: []const struct { u8, ButtonEvent
         const nrRtValues = tree.nrItems[@intFromEnum(ItemTag.value)];
         const nrRtLabels = tree.nrItems[@intFromEnum(ItemTag.label)];
         const nrRtItems = nrRtSections + nrRtValues + nrRtLabels;
-        const standard_map = standard_map_;
-        const one_shot = blk: {
-            var x: u8 = 0;
-            for (standard_map_) |i| {
-                if (i[1] == .up or i[1] == .down) {
-                    x |= i[0];
-                }
-            }
-            break :blk x;
-        };
+        const button_masks = button_masks_;
 
+        last_buttons: u8 = 0,
         display: Display = undefined,
         tree: Tree = tree,
         items: [nrRtItems]RtItem = undefined,
@@ -273,6 +273,7 @@ pub fn Impl(comptime tree: Tree, standard_map_: []const struct { u8, ButtonEvent
                             if (switch (self.values[item.ptr].value) {
                                 .ro => false,
                                 .rw => true,
+                                .button => false,
                             }) {
                                 c_val += 1;
                             }
@@ -291,7 +292,6 @@ pub fn Impl(comptime tree: Tree, standard_map_: []const struct { u8, ButtonEvent
                     s.cursor = first;
                     if (c_val == 1 and c_sec == 0) {
                         s.type = .one_value;
-                        // s.mode = .change_value;
                     }
                 }
             }
@@ -304,25 +304,56 @@ pub fn Impl(comptime tree: Tree, standard_map_: []const struct { u8, ButtonEvent
                 .value => switch (self.values[item.ptr].value) {
                     .ro => false,
                     .rw => true,
+                    .button => true,
                 },
                 .label => false,
             };
         }
 
-        fn advanceCursor(self: *Self, dir: Display.Button) ?Event {
+        fn test2(b: ButtonSemantics, low: u8, high: u8) bool {
+            const m = button_masks[@intFromEnum(b)];
+            return m != 0 and m & ~low == m and m & high == m;
+        }
+
+        fn test1(b: ButtonSemantics, high: u8) bool {
+            const m = button_masks[@intFromEnum(b)];
+            return m != 0 and m & high == m;
+        }
+
+        const Events = struct {
+            a: [8]Event = undefined,
+            i: u8 = 0,
+            fn slice(self: Events) []const Event {
+                return self.a[0..self.i];
+            }
+        };
+
+        inline fn push(l: *Events, e: Event) void {
+            l.a[l.i] = e;
+            l.i += 1;
+        }
+
+        inline fn push_o(l: *Events, e: ?Event) void {
+            if (e) |ev| {
+                push(l, ev);
+            }
+        }
+
+        fn advanceCursor(self: *Self, but: u8) []const Event {
             const sec: *RtSection = &self.sections[self.curSection];
             const lines = &sec.lines;
-            var event: ?Event = null;
+            var events = Events{}; // we can have maximal 8 buttons..
+            const ev = &events;
             // test if there are members in this section
             if (sec.begin == sec.end) {
-                return event;
+                return ev.slice();
             }
-            switch (sec.type) {
+            const lbut = self.last_buttons;
+            sec_sw: switch (sec.type) {
                 .standard => |*mode| {
                     switch (mode.*) {
-                        .select_item => switch (dir) {
-                            .none => {},
-                            .left => {
+                        .select_item => {
+                            if (test2(.left, lbut, but)) {
                                 // first we check if we only have to scroll backwards,
                                 // this is the case if the cursor item pos is not visible right now
                                 if (lines[0] > self.items[sec.cursor].pos.line) {
@@ -332,7 +363,7 @@ pub fn Impl(comptime tree: Tree, standard_map_: []const struct { u8, ButtonEvent
                                 } else {
                                     // if only one item, do not move cursor
                                     if (sec.begin + 1 == sec.end) {
-                                        return event;
+                                        break :sec_sw;
                                     }
                                     const start = sec.cursor; // since we cycle around we need a stop
                                     while (sec.cursor >= sec.begin) {
@@ -357,38 +388,32 @@ pub fn Impl(comptime tree: Tree, standard_map_: []const struct { u8, ButtonEvent
                                         if (start == sec.cursor or line_changed or self.hasCursor(sec.cursor)) break;
                                     }
                                 }
-                            },
-                            .right => {
+                            }
+                            if (test2(.right, lbut, but)) {
                                 // check if we have to scroll forward
                                 if (lines[1] < self.items[sec.cursor].last.line) {
-                                    // log.info("right,A", .{});
                                     // increase lines
                                     lines[0] = lines[1];
                                     lines[1] += 1;
                                 } else {
-                                    // log.info("right,B", .{});
                                     // if only one item, do not move cursor
                                     if (sec.begin + 1 == sec.end) {
-                                        return event;
+                                        break :sec_sw;
                                     }
                                     const start = sec.cursor; // since we cycle around we need a stop
                                     while (sec.cursor < sec.end) {
                                         var line_changed = false;
                                         if (sec.cursor + 1 == sec.end) {
-                                            // log.info("right,C", .{});
                                             sec.cursor = sec.begin;
                                             const li = self.items[sec.cursor].pos.line;
                                             if (li != lines[0] and li != lines[1]) {
-                                                // log.info("right,D", .{});
                                                 lines[0] = li;
                                                 lines[1] = li + 1;
                                                 line_changed = true;
                                             }
                                         } else {
-                                            // log.info("right,E", .{});
                                             sec.cursor += 1;
                                             if (self.items[sec.cursor].last.line > lines[1]) {
-                                                // log.info("right,F", .{});
                                                 // increase lines
                                                 lines[0] = lines[1];
                                                 lines[1] += 1;
@@ -398,57 +423,66 @@ pub fn Impl(comptime tree: Tree, standard_map_: []const struct { u8, ButtonEvent
                                         if (start == sec.cursor or line_changed or self.hasCursor(sec.cursor)) break;
                                     }
                                 }
-                            },
-                            .up => {
+                            }
+                            if (test2(.escape, lbut, but)) {
                                 if (self.curSection > 0) {
                                     if (sec.id) |id| {
-                                        event = .{ .id = id, .pl = .{ .section = .leave } };
+                                        push(ev, .{ .id = id, .pl = .{ .section = .leave } });
                                     }
                                     self.curSection = sec.parent;
                                 }
-                            },
-                            .down => {
+                            }
+                            const activate_pressed = test2(.activate, lbut, but);
+                            const activate_released = test2(.activate, but, lbut);
+                            if (activate_pressed or activate_released) {
                                 switch (self.items[sec.cursor].tag) {
                                     .section => {
-                                        self.curSection = self.items[sec.cursor].ptr;
-                                        const sec_: *RtSection = &self.sections[self.curSection];
-                                        if (sec_.id) |id| {
-                                            event = .{ .id = id, .pl = .{ .section = .enter } };
+                                        if (activate_pressed) {
+                                            self.curSection = self.items[sec.cursor].ptr;
+                                            const sec_: *RtSection = &self.sections[self.curSection];
+                                            if (sec_.id) |id| {
+                                                push(ev, .{ .id = id, .pl = .{ .section = .enter } });
+                                            }
                                         }
                                     },
                                     .value => {
-                                        // should be on a selectable one
-                                        mode.* = .change_value;
+                                        switch (self.values[self.items[sec.cursor].ptr].value) {
+                                            .rw => {
+                                                // should be on a selectable one
+                                                if (activate_pressed) {
+                                                    mode.* = .change_value;
+                                                }
+                                            },
+                                            .button => |button| {
+                                                switch (button.behavior) {
+                                                    .push_button => {
+                                                        if (activate_pressed) {
+                                                            push_o(ev, button.set());
+                                                        } else if (activate_released) {
+                                                            push_o(ev, button.reset());
+                                                        }
+                                                    },
+                                                    else => {},
+                                                }
+                                            },
+                                            else => {},
+                                        }
                                     },
                                     else => {},
                                 }
-                            },
+                            }
                         },
                         .change_value => {
                             switch (self.values[self.items[sec.cursor].ptr].value) {
                                 .rw => |rw| {
-                                    switch (dir) {
-                                        .right => {
-                                            event = rw.inc();
-                                        },
-                                        .left => {
-                                            event = rw.dec();
-                                        },
-                                        .down => {},
-                                        .none => {},
-                                        .up => {
-                                            // switch (sec.type) {
-                                            //     .one_value => {
-                                            //         if (sec.id) |id| {
-                                            //             event = .{ .id = id, .pl = .{ .section = .leave } };
-                                            //         }
-                                            //         self.curSection = sec.parent;
-                                            //     },
-                                            // .normal => {
-                                            mode.* = .select_item;
-                                            // },
-                                            // }
-                                        },
+                                    if (test2(.right, lbut, but)) {
+                                        push_o(ev, rw.inc());
+                                    }
+                                    if (test2(.left, lbut, but)) {
+                                        push_o(ev, rw.dec());
+                                    }
+                                    if (test1(.escape, but)) {
+                                        mode.* = .select_item;
                                     }
                                 },
                                 else => {},
@@ -459,21 +493,17 @@ pub fn Impl(comptime tree: Tree, standard_map_: []const struct { u8, ButtonEvent
                 .one_value => {
                     switch (self.values[self.items[sec.cursor].ptr].value) {
                         .rw => |rw| {
-                            switch (dir) {
-                                .right => {
-                                    event = rw.inc();
-                                },
-                                .left => {
-                                    event = rw.dec();
-                                },
-                                .down => {},
-                                .none => {},
-                                .up => {
-                                    if (sec.id) |id| {
-                                        event = .{ .id = id, .pl = .{ .section = .leave } };
-                                    }
-                                    self.curSection = sec.parent;
-                                },
+                            if (test2(.right, lbut, but)) {
+                                push_o(ev, rw.inc());
+                            }
+                            if (test2(.left, lbut, but)) {
+                                push_o(ev, rw.dec());
+                            }
+                            if (test2(.escape, lbut, but)) {
+                                if (sec.id) |id| {
+                                    push(ev, .{ .id = id, .pl = .{ .section = .leave } });
+                                }
+                                self.curSection = sec.parent;
                             }
                         },
                         else => {},
@@ -481,13 +511,14 @@ pub fn Impl(comptime tree: Tree, standard_map_: []const struct { u8, ButtonEvent
                 },
                 .direct => {},
             }
-            return event;
+            self.last_buttons = but;
+            return ev.slice();
         }
 
-        fn buttonEventImpl(ctx: *anyopaque, button: Display.Button) ?Event {
+        fn buttonEventImpl(ctx: *anyopaque, buttons: u8) []const Event {
             const self: *Self = @ptrCast(@alignCast(ctx));
 
-            const ev = advanceCursor(self, button);
+            const ev = advanceCursor(self, buttons);
             const sec: *RtSection = &self.sections[self.curSection];
             const cItem = self.items[sec.cursor];
             // log.info("cursor item:{d} is at line:{d},column:{d}", .{ sec.cursor, cItem.pos.line, cItem.pos.column });

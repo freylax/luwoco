@@ -25,8 +25,6 @@ pub fn BufferedLCD(comptime NrOfLines: comptime_int) type {
         buf: [nLines]Line = [_]Line{Line{}} ** nLines, // buffer for writing, protected by mx
         dBuf: [2][Line.len]u8 = .{.{' '} ** Line.len} ** 2, // the actual displayed chars
         dLines: [2]usize = .{ 0, 1 }, // the actual displayed lines
-        butOneShot: u8, // set the button bit for one shot buttons
-        butLast: u8 = 0, // the last buttons read
         cursorOn: bool = false,
         cursorLine: u16 = 0,
         cursorCol: u8 = 0,
@@ -42,7 +40,6 @@ pub fn BufferedLCD(comptime NrOfLines: comptime_int) type {
                     .cursorOff = cursorOff,
                     .cursor = cursor,
                     .print = print,
-                    .readButtons = readButtons,
                 },
             };
         }
@@ -51,17 +48,15 @@ pub fn BufferedLCD(comptime NrOfLines: comptime_int) type {
             return .{
                 .ptr = self,
                 .vtable = &.{
-                    .read = newReadButtons,
-                    .oneShot = oneShot,
+                    .read = readButtons,
                 },
             };
         }
 
-        pub fn init(dd: Datagram_Device, butOneShot: u8) Self {
+        pub fn init(dd: Datagram_Device) Self {
             return Self{
                 .dd = dd,
                 .mx = Mutex{},
-                .butOneShot = butOneShot,
             };
         }
 
@@ -207,46 +202,14 @@ pub fn BufferedLCD(comptime NrOfLines: comptime_int) type {
             }
         }
 
-        pub fn readButtons(ctx: *anyopaque) ?Display.Button {
+        pub fn readButtons(ctx: *anyopaque) ?u8 {
             const self: *Self = @ptrCast(@alignCast(ctx));
             var buf: [1]u8 = .{0};
             _ = self.read_datagram(0x05, &buf) catch |e| {
                 self.lastError = e;
                 return null;
             };
-            const but: u8 = buf[0] ^ 0x0f;
-            const res = but & ~(self.butLast & self.butOneShot);
-            self.butLast = but;
-            return switch (res) {
-                0b0001 => .up,
-                0b0010 => .left,
-                0b0100 => .right,
-                0b1000 => .down,
-                else => .none,
-            };
-            // a l o r
-            // 1 1 1 0
-            // 1 1 0 1
-            // 0 1 1 0
-            // 0 1 0 0
-            // 1 0 1 1  a & ~( l & o)
-            // 1 0 0 1
-        }
-        pub fn newReadButtons(ctx: *anyopaque) ?u8 {
-            const self: *Self = @ptrCast(@alignCast(ctx));
-            var buf: [1]u8 = .{0};
-            _ = self.read_datagram(0x05, &buf) catch |e| {
-                self.lastError = e;
-                return null;
-            };
-            const but: u8 = buf[0] ^ 0x0f;
-            const res = but & ~(self.butLast & self.butOneShot);
-            self.butLast = but;
-            return res;
-        }
-        pub fn oneShot(ctx: *anyopaque, b: u8) void {
-            const self: *Self = @ptrCast(@alignCast(ctx));
-            self.butOneShot = b;
+            return buf[0] ^ 0x0f;
         }
 
         pub fn setBackLight(self: *Self, val: u8) ?void {

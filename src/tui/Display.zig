@@ -5,14 +5,6 @@ pub const CursorType = enum {
     change,
 };
 
-pub const Button = enum {
-    up,
-    down,
-    left,
-    right,
-    none,
-};
-
 pub const Error = error{DisplayError};
 
 lines: u8,
@@ -27,8 +19,6 @@ pub const VTable = struct {
     cursor: *const fn (*anyopaque, bLine: u16, bCol: u8, eLine: u16, eCol: u8, CursorType) void,
     // if return false, then an Error did happen
     print: *const fn (*anyopaque, print_lines: []const u16) ?void,
-    // if no Button was returned, then
-    readButtons: *const fn (*anyopaque) ?Button,
 };
 pub inline fn write(d: Self, line: u16, column: u8, str: []const u8) void {
     d.vtable.write(d.ptr, line, column, str);
@@ -41,13 +31,6 @@ pub inline fn cursor(d: Self, bLine: u16, bCol: u8, eLine: u16, eCol: u8, t: Cur
 }
 pub inline fn print(d: Self, print_lines: []const u16) Error!void {
     if (d.vtable.print(d.ptr, print_lines)) |_| {} else {
-        return error.DisplayError;
-    }
-}
-pub inline fn readButtons(d: Self) Error!Button {
-    if (d.vtable.readButtons(d.ptr)) |b| {
-        return b;
-    } else {
         return error.DisplayError;
     }
 }

@@ -5,7 +5,9 @@ const Buttons = @import("tui/Buttons.zig");
 const Tree = @import("tui/Tree.zig");
 const TUI = @import("TUI.zig");
 const Item = Tree.Item;
-const IntValue = @import("tui/values.zig").IntValue;
+const values = @import("tui/values.zig");
+const IntValue = values.IntValue;
+const PushButton = values.PushButton;
 
 const rp2xxx = microzig.hal;
 const gpio = rp2xxx.gpio;
@@ -67,14 +69,20 @@ const Event = struct {
     },
 };
 
-const std_button_map: []const struct { u8, Buttons.Event } = &.{
-    .{ 0b0001, .up },
-    .{ 0b0010, .left },
-    .{ 0b0100, .right },
-    .{ 0b1000, .down },
+const button_masks = blk: {
+    const l = TUI.ButtonSemanticsLen;
+    const BS = TUI.ButtonSemantics;
+    var a = [_]u8{0} ** l;
+    a[@intFromEnum(BS.escape)] = 0b0001;
+    a[@intFromEnum(BS.left)] = 0b0010;
+    a[@intFromEnum(BS.right)] = 0b0100;
+    a[@intFromEnum(BS.activate)] = 0b1000;
+    break :blk a;
 };
 
 var back_light = IntValue{ .min = 0, .max = 255, .val = 0, .id = EventId.BackLight.id() };
+var pb_one = PushButton{};
+var pb_two = PushButton{};
 
 const items: []const Item = &.{
     .{
@@ -88,10 +96,12 @@ const items: []const Item = &.{
         },
     },
     .{ .popup = .{
-        .str = " Noe\n",
+        .str = " Button\n",
         .items = &.{
-            .{ .label = " Das ist\neine lange\nGeschichte." },
-            .{ .label = " Label D" },
+            .{ .value = pb_one.value() },
+            .{ .label = " pb1" },
+            .{ .value = pb_two.value() },
+            .{ .label = " pb2" },
         },
     } },
     .{
@@ -128,7 +138,7 @@ const items: []const Item = &.{
 
 const tree = Tree.create(items, 16 - 1);
 const LCD = olimex_lcd.BufferedLCD(tree.bufferLines);
-const TuiImpl = TUI.Impl(tree, std_button_map);
+const TuiImpl = TUI.Impl(tree, &button_masks);
 // fn core1() void {
 //     while (true) {
 //         const ev: Event = @enumFromInt(fifo.read_blocking());
@@ -162,9 +172,9 @@ pub fn main() !void {
     var i2c_device = I2C_Device.init(i2c0, @enumFromInt(0x30), null);
     std.log.info("lcd", .{});
     // button 1 and 4 are one shot buttons
-    var lcd = LCD.init(i2c_device.datagram_device(), 0b1001);
+    var lcd = LCD.init(i2c_device.datagram_device());
     var display = lcd.display();
-    // var buttons = lcd.buttons();
+    var buttons = lcd.buttons();
     var tuiImpl = TuiImpl.init(display);
     var tui = tuiImpl.tui();
     time.sleep_ms(100);
@@ -209,19 +219,18 @@ pub fn main() !void {
     time.sleep_ms(100);
     // var last_buttons: u8 = 0;
     while (true) {
-        var event: ?Event = null;
+        var events: [8]Event = undefined;
+        var ev_idx: u8 = 0;
         tui.writeValues();
         if (tui.print()) {} else |_| {}
         time.sleep_ms(100);
-        // const current_buttons = buttons.read();
-        const read_buttons = display.readButtons();
+        const read_buttons = buttons.read();
+        // const read_buttons = display.readButtons();
         if (read_buttons) |b| {
-            if (b != .none) {
-                // last_buttons = b;
-                if (tui.buttonEvent(b)) |ev| {
-                    // log.info("tui event with id:{d}", .{ev.id});
-                    event = .{ .id = @enumFromInt(ev.id), .pl = .{ .tui = ev.pl } };
-                }
+            for (tui.buttonEvent(b)) |ev| {
+                // log.info("tui event with id:{d}", .{ev.id});
+                events[ev_idx] = .{ .id = @enumFromInt(ev.id), .pl = .{ .tui = ev.pl } };
+                ev_idx += 1;
             }
         } else |_| {}
         if (lcd.lastError) |e| {
@@ -235,7 +244,7 @@ pub fn main() !void {
             }
             lcd.lastError = null;
         }
-        if (event) |ev| {
+        for (events[0..ev_idx]) |ev| {
             switch (ev.id) {
                 .Setup => {
                     switch (ev.pl.tui.section) {

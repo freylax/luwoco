@@ -68,3 +68,45 @@ pub const IntValue = struct {
         return self.event();
     }
 };
+
+pub const PushButton = struct {
+    val: bool = false,
+    id: ?u16 = null,
+    buf: [2]u8 = [_]u8{' '} ** 2,
+    pub fn value(self: *PushButton) Value {
+        return .{
+            .button = .{
+                .behavior = .push_button,
+                .size = 2,
+                .ptr = self,
+                .vtable = &.{ .get = get, .set = set, .reset = reset, .enabled = enabled },
+            },
+        };
+    }
+    fn get(ctx: *anyopaque) []const u8 {
+        const self: *PushButton = @ptrCast(@alignCast(ctx));
+        self.buf[1] = if (self.val) 0xff else 'O';
+        return &self.buf;
+    }
+    fn event(self: *PushButton) ?Event {
+        if (self.id) |id| {
+            return .{ .id = id, .pl = .{ .button = self.val } };
+        } else {
+            return null;
+        }
+    }
+    fn set(ctx: *anyopaque) ?Event {
+        const self: *PushButton = @ptrCast(@alignCast(ctx));
+        self.val = true;
+        return self.event();
+    }
+    fn reset(ctx: *anyopaque) ?Event {
+        const self: *PushButton = @ptrCast(@alignCast(ctx));
+        self.val = false;
+        return self.event();
+    }
+    fn enabled(ctx: *anyopaque) bool {
+        _ = ctx;
+        return true;
+    }
+};
