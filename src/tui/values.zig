@@ -30,6 +30,7 @@ pub const IntValue = struct {
     pub fn value(self: *IntValue) Value {
         return .{
             .rw = .{
+                // .id = self.id,
                 .size = 4, //comptime size(self.max),
                 .ptr = self,
                 .vtable = &.{ .get = get, .inc = inc, .dec = dec },
@@ -73,11 +74,15 @@ pub const PushButton = struct {
     val: bool = false,
     id: ?u16 = null,
     buf: [2]u8 = [_]u8{' '} ** 2,
-    pub fn value(self: *PushButton) Value {
+    const Opt = struct {
+        db: ?u8 = null,
+    };
+    pub fn value(self: *PushButton, opt: Opt) Value {
         return .{
             .button = .{
                 .behavior = .push_button,
                 .size = 2,
+                .direct_buttons = if (opt.db) |db| &.{db} else &.{},
                 .ptr = self,
                 .vtable = &.{ .get = get, .set = set, .reset = reset, .enabled = enabled },
             },

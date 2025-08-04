@@ -7,15 +7,22 @@ pub const ItemTagLen = items_.ItemTagLen;
 
 const Tree = @This();
 
+pub const AdditionalCounters = enum(u3) {
+    direct_buttons = ItemTagLen,
+};
+const additionalCountersLen = @typeInfo(AdditionalCounters).@"enum".fields.len;
+
+const nrCounters = ItemTagLen + additionalCountersLen;
+
 line_end: u8,
 items: []const Item,
-nrItems: [ItemTagLen]u16,
+nrItems: [nrCounters]u16,
 totalNrItems: u16,
 bufferLines: u16,
 
 pub fn create(items: []const Item, line_end: u8) Tree {
     const nrItems = calcTreeSize: {
-        var counter = [_]u16{0} ** ItemTagLen;
+        var counter = [_]u16{0} ** nrCounters;
         treeSize(items, &counter);
         break :calcTreeSize counter;
     };
@@ -42,7 +49,7 @@ pub fn create(items: []const Item, line_end: u8) Tree {
     };
 }
 
-fn treeSize(l: []const Item, count: *[ItemTagLen]u16) void {
+fn treeSize(l: []const Item, count: *[nrCounters]u16) void {
     for (l) |i| {
         switch (i) {
             .popup => |p| {
@@ -50,6 +57,9 @@ fn treeSize(l: []const Item, count: *[ItemTagLen]u16) void {
             },
             .embed => |e| {
                 treeSize(e.items, count);
+            },
+            .value => |v| {
+                count[@intFromEnum(AdditionalCounters.direct_buttons)] += v.direct_buttons().len;
             },
             else => {},
         }

@@ -53,6 +53,7 @@ const i2c0 = i2c.instance.num(0);
 const EventId = enum(u16) {
     Setup,
     BackLight,
+    PushButton,
     pub fn id(self: EventId) u16 {
         return @intFromEnum(self);
     }
@@ -69,19 +70,25 @@ const Event = struct {
     },
 };
 
+const BS = TUI.ButtonSemantics;
+
+const button1: u8 = 0b0001;
+const button2: u8 = 0b0010;
+const button3: u8 = 0b0100;
+const button4: u8 = 0b1000;
+
 const button_masks = blk: {
     const l = TUI.ButtonSemanticsLen;
-    const BS = TUI.ButtonSemantics;
     var a = [_]u8{0} ** l;
-    a[@intFromEnum(BS.escape)] = 0b0001;
-    a[@intFromEnum(BS.left)] = 0b0010;
-    a[@intFromEnum(BS.right)] = 0b0100;
-    a[@intFromEnum(BS.activate)] = 0b1000;
+    a[@intFromEnum(BS.escape)] = button1;
+    a[@intFromEnum(BS.left)] = button2;
+    a[@intFromEnum(BS.right)] = button3;
+    a[@intFromEnum(BS.activate)] = button4;
     break :blk a;
 };
 
 var back_light = IntValue{ .min = 0, .max = 255, .val = 0, .id = EventId.BackLight.id() };
-var pb_one = PushButton{};
+var pb_one = PushButton{ .id = EventId.PushButton.id() };
 var pb_two = PushButton{};
 
 const items: []const Item = &.{
@@ -98,9 +105,9 @@ const items: []const Item = &.{
     .{ .popup = .{
         .str = " Button\n",
         .items = &.{
-            .{ .value = pb_one.value() },
+            .{ .value = pb_one.value(.{ .db = button3 }) },
             .{ .label = " pb1" },
-            .{ .value = pb_two.value() },
+            .{ .value = pb_two.value(.{ .db = button4 }) },
             .{ .label = " pb2" },
         },
     } },
@@ -258,6 +265,9 @@ pub fn main() !void {
                 },
                 .BackLight => {
                     _ = lcd.setBackLight(ev.pl.tui.value);
+                },
+                .PushButton => {
+                    log.info("PushButton Event", .{});
                 },
                 // else => {
                 //     log.info("Unhandled Event", .{});

@@ -40,8 +40,8 @@ pub const RoValue = struct {
 };
 
 pub const RwValue = struct {
-    id: ?u16 = null,
     size: u8,
+    direct_buttons: []const u8 = &.{},
     ptr: *anyopaque,
     vtable: *const VTable,
     pub const VTable = struct {
@@ -66,9 +66,9 @@ pub const ButtonValue = struct {
         radio_button,
         push_button,
     };
-    id: ?u16 = null,
     size: u8,
     behavior: Behavior,
+    direct_buttons: []const u8 = &.{},
     ptr: *anyopaque,
     vtable: *const VTable,
     pub const VTable = struct {
@@ -100,6 +100,13 @@ pub const Value = union(ValueTag) {
             .ro => |ro| ro.size,
             .rw => |rw| rw.size,
             .button => |button| button.size,
+        };
+    }
+    pub inline fn direct_buttons(v: Value) []const u8 {
+        return switch (v) {
+            .ro => &.{},
+            .rw => |rw| rw.direct_buttons,
+            .button => |button| button.direct_buttons,
         };
     }
     pub inline fn get(v: Value) []const u8 {

@@ -5,6 +5,7 @@ const Tree = @import("tui/Tree.zig");
 
 const Item = Tree.Item;
 const ItemTag = Tree.ItemTag;
+const AdditionalCounters = Tree.AdditionalCounters;
 const Value = @import("tui/items.zig").Value;
 pub const Event = @import("tui/Event.zig");
 
@@ -55,15 +56,10 @@ const RtSection = struct {
         direct,
     };
 
-    const Direct = struct {
-        one_shot: u8,
-        button_map: ?[]const struct { u8, u16 }, // mapping of button mask to values
-    };
-
     const Type = union(Tag) {
         standard: Mode,
         one_value: void,
-        direct: Direct,
+        direct: []const struct { u8, u16 }, // mapping of button mask to values
     };
 
     type: Type = .{ .standard = .select_item },
@@ -98,6 +94,7 @@ pub fn Impl(comptime tree: Tree, button_masks_: []const u8) type {
         const nrRtValues = tree.nrItems[@intFromEnum(ItemTag.value)];
         const nrRtLabels = tree.nrItems[@intFromEnum(ItemTag.label)];
         const nrRtItems = nrRtSections + nrRtValues + nrRtLabels;
+        const nrDirectButtons = tree.nrItems[@intFromEnum(AdditionalCounters.direct_buttons)];
         const button_masks = button_masks_;
 
         last_buttons: u8 = 0,
@@ -106,7 +103,8 @@ pub fn Impl(comptime tree: Tree, button_masks_: []const u8) type {
         items: [nrRtItems]RtItem = undefined,
         sections: [nrRtSections]RtSection = undefined,
         values: [nrRtValues]RtValue = undefined,
-
+        // +1 because indexing not allowed for empty arrays
+        direct_buttons: [nrDirectButtons + 1]struct { u8, u16 } = undefined,
         curSection: u16 = 0,
         const Idx = struct {
             item: u16,
@@ -121,7 +119,11 @@ pub fn Impl(comptime tree: Tree, button_masks_: []const u8) type {
         }
         pub fn tui(self: *Self) TUI {
             var pos = Pos{ .column = 0, .line = 0 };
-            var idx = Idx{ .item = 1, .section = 1, .value = 0 };
+            var idx = Idx{
+                .item = 1,
+                .section = 1,
+                .value = 0,
+            };
             // the root item
             self.items[0] = .{ .tag = .section, .pos = pos, .ptr = 0, .last = pos };
             self.sections[0] = .{
@@ -260,22 +262,28 @@ pub fn Impl(comptime tree: Tree, button_masks_: []const u8) type {
         // setup the initial cursor positions
         // and modi for values
         fn checkSections(self: *Self) void {
+            var db_i: u16 = 0;
             for (&self.sections) |*s| {
                 // count number of values in this section
                 var i: u16 = s.begin;
                 var first_selectable: ?u16 = null;
                 var c_val: u16 = 0;
                 var c_sec: u16 = 0;
+                const db_b = db_i;
                 while (i != s.end) {
                     const item = self.items[i];
                     switch (item.tag) {
                         .value => {
-                            if (switch (self.values[item.ptr].value) {
-                                .ro => false,
-                                .rw => true,
-                                .button => false,
-                            }) {
-                                c_val += 1;
+                            const val = self.values[item.ptr].value;
+                            switch (val) {
+                                .rw => {
+                                    c_val += 1;
+                                },
+                                else => {},
+                            }
+                            for (val.direct_buttons()) |db| {
+                                self.direct_buttons[db_i] = .{ db, item.ptr };
+                                db_i += 1;
                             }
                         },
                         .section => {
@@ -288,7 +296,10 @@ pub fn Impl(comptime tree: Tree, button_masks_: []const u8) type {
                     }
                     i += 1;
                 }
-                if (first_selectable) |first| {
+                if (db_i > db_b) {
+                    // we have direct button mapping for this section
+                    s.type = .{ .direct = self.direct_buttons[db_b..db_i] };
+                } else if (first_selectable) |first| {
                     s.cursor = first;
                     if (c_val == 1 and c_sec == 0) {
                         s.type = .one_value;
@@ -310,13 +321,20 @@ pub fn Impl(comptime tree: Tree, button_masks_: []const u8) type {
             };
         }
 
-        fn test2(b: ButtonSemantics, low: u8, high: u8) bool {
-            const m = button_masks[@intFromEnum(b)];
+        inline fn buttonMask(b: ButtonSemantics) u8 {
+            return button_masks[@intFromEnum(b)];
+        }
+
+        inline fn test2m(m: u8, low: u8, high: u8) bool {
             return m != 0 and m & ~low == m and m & high == m;
         }
 
+        inline fn test2(b: ButtonSemantics, low: u8, high: u8) bool {
+            return test2m(buttonMask(b), low, high);
+        }
+
         fn test1(b: ButtonSemantics, high: u8) bool {
-            const m = button_masks[@intFromEnum(b)];
+            const m = buttonMask(b);
             return m != 0 and m & high == m;
         }
 
@@ -509,7 +527,43 @@ pub fn Impl(comptime tree: Tree, button_masks_: []const u8) type {
                         else => {},
                     }
                 },
-                .direct => {},
+                .direct => |map| {
+                    var esc_enabled = true;
+                    const esc_m = buttonMask(.escape);
+                    for (map) |map_i| {
+                        const m, const v = map_i;
+                        const pressed = test2m(m, lbut, but);
+                        const released = test2m(m, but, lbut);
+                        if (pressed or released) {
+                            switch (self.values[v].value) {
+                                .button => |button| {
+                                    if (button.enabled()) {
+                                        switch (button.behavior) {
+                                            .push_button => {
+                                                if (pressed) {
+                                                    push_o(ev, button.set());
+                                                } else if (released) {
+                                                    push_o(ev, button.reset());
+                                                }
+                                            },
+                                            else => {},
+                                        }
+                                        if (m == esc_m) {
+                                            esc_enabled = false;
+                                        }
+                                    }
+                                },
+                                else => {},
+                            }
+                        }
+                    }
+                    if (esc_enabled and test2(.escape, lbut, but)) {
+                        if (sec.id) |id| {
+                            push(ev, .{ .id = id, .pl = .{ .section = .leave } });
+                        }
+                        self.curSection = sec.parent;
+                    }
+                },
             }
             self.last_buttons = but;
             return ev.slice();
