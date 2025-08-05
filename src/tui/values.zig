@@ -94,11 +94,10 @@ pub const PushButton = struct {
         return &self.buf;
     }
     fn event(self: *PushButton) ?Event {
-        if (self.id) |id| {
-            return .{ .id = id, .pl = .{ .button = self.val } };
-        } else {
-            return null;
-        }
+        return if (self.id) |id|
+            .{ .id = id, .pl = .{ .button = self.val } }
+        else
+            null;
     }
     fn set(ctx: *anyopaque) ?Event {
         const self: *PushButton = @ptrCast(@alignCast(ctx));
@@ -115,3 +114,63 @@ pub const PushButton = struct {
         return true;
     }
 };
+
+pub fn RefPushButton(comptime T: type) type {
+    return struct {
+        const Self = @This();
+        ref: *T,
+        pressed: T,
+        released: T,
+        id: ?u16 = null,
+        buf: [3]u8 = [_]u8{' '} ** 3,
+        const Opt = struct {
+            db: ?u8 = null,
+        };
+        pub fn value(self: *Self, opt: Opt) Value {
+            return .{
+                .button = .{
+                    .behavior = .push_button,
+                    .size = self.buf.len,
+                    .direct_buttons = if (opt.db) |db| &.{db} else &.{},
+                    .ptr = self,
+                    .vtable = &.{ .get = get, .set = set, .reset = reset, .enabled = enabled },
+                },
+            };
+        }
+        fn get(ctx: *anyopaque) []const u8 {
+            const self: *Self = @ptrCast(@alignCast(ctx));
+            if (self.enabled_()) {
+                self.buf[0] = '(';
+                self.buf[2] = ')';
+            } else {
+                self.buf[0] = '[';
+                self.buf[2] = ']';
+            }
+            self.buf[1] = if (self.ref.* == self.pressed) '*' else 'o';
+            return &self.buf;
+        }
+        fn event(self: *Self) ?Event {
+            return if (self.id) |id|
+                .{ .id = id, .pl = .{ .button = self.ref.* == self.pressed } }
+            else
+                null;
+        }
+        fn set(ctx: *anyopaque) ?Event {
+            const self: *Self = @ptrCast(@alignCast(ctx));
+            self.ref.* = self.pressed;
+            return self.event();
+        }
+        fn reset(ctx: *anyopaque) ?Event {
+            const self: *Self = @ptrCast(@alignCast(ctx));
+            self.ref.* = self.released;
+            return self.event();
+        }
+        fn enabled_(self: *Self) bool {
+            return self.ref.* == self.pressed or self.ref.* == self.released;
+        }
+        fn enabled(ctx: *anyopaque) bool {
+            const self: *Self = @ptrCast(@alignCast(ctx));
+            return enabled_(self);
+        }
+    };
+}

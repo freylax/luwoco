@@ -1,41 +1,28 @@
 const std = @import("std");
 const microzig = @import("microzig");
 const olimex_lcd = @import("olimex_lcd.zig");
+const Drive = @import("Drive.zig");
 const Buttons = @import("tui/Buttons.zig");
 const Tree = @import("tui/Tree.zig");
 const TUI = @import("TUI.zig");
+
 const Item = Tree.Item;
 const values = @import("tui/values.zig");
 const IntValue = values.IntValue;
-const PushButton = values.PushButton;
+const RefPushButton = values.RefPushButton;
 
 const rp2xxx = microzig.hal;
 const gpio = rp2xxx.gpio;
 const i2c = rp2xxx.i2c;
 const time = rp2xxx.time;
 const I2C_Device = rp2xxx.drivers.I2C_Device;
+const GPIO_Device = rp2xxx.drivers.GPIO_Device;
 const Datagram_Device = microzig.drivers.base.Datagram_Device;
 const Mutex = rp2xxx.mutex.Mutex;
 const multicore = rp2xxx.multicore;
 const fifo = multicore.fifo;
 const log = std.log;
 const assert = std.debug.assert;
-// const enabled: ?gpio.Enabled = .enabled;
-
-// const pin_config = rp2xxx.pins.GlobalConfiguration{
-//     .GPIO4 = .{
-//         .name = "sda",
-//         .function = .I2C0_SDA,
-//         .slew_rate = .slow,
-//         .schmitt_trigger = rp2xxx.gpio.Enabled.enabled,
-//     },
-//     .GPIO5 = .{
-//         .name = "scl",
-//         .function = .I2C0_SCL,
-//         .slew_rate = .slow,
-//         .schmitt_trigger = rp2xxx.gpio.Enabled.enabled,
-//     },
-// };
 
 const uart = rp2xxx.uart.instance.num(0);
 const baud_rate = 115200;
@@ -53,7 +40,8 @@ const i2c0 = i2c.instance.num(0);
 const EventId = enum(u16) {
     Setup,
     BackLight,
-    PushButton,
+    drive_x,
+    drive_y,
     pub fn id(self: EventId) u16 {
         return @intFromEnum(self);
     }
@@ -88,8 +76,34 @@ const button_masks = blk: {
 };
 
 var back_light = IntValue{ .min = 0, .max = 255, .val = 0, .id = EventId.BackLight.id() };
-var pb_one = PushButton{ .id = EventId.PushButton.id() };
-var pb_two = PushButton{};
+
+var drive_x_state: Drive.State = .off;
+var pb_dx_dir_a = RefPushButton(Drive.State){
+    .ref = &drive_x_state,
+    .pressed = .dir_a,
+    .released = .off,
+    .id = EventId.drive_x.id(),
+};
+var pb_dx_dir_b = RefPushButton(Drive.State){
+    .ref = &drive_x_state,
+    .pressed = .dir_b,
+    .released = .off,
+    .id = EventId.drive_x.id(),
+};
+
+var drive_y_state: Drive.State = .off;
+var pb_dy_dir_a = RefPushButton(Drive.State){
+    .ref = &drive_y_state,
+    .pressed = .dir_a,
+    .released = .off,
+    .id = EventId.drive_y.id(),
+};
+var pb_dy_dir_b = RefPushButton(Drive.State){
+    .ref = &drive_y_state,
+    .pressed = .dir_b,
+    .released = .off,
+    .id = EventId.drive_y.id(),
+};
 
 const items: []const Item = &.{
     .{
@@ -103,12 +117,23 @@ const items: []const Item = &.{
         },
     },
     .{ .popup = .{
-        .str = " Button\n",
+        .str = " Test Drive X\n",
         .items = &.{
-            .{ .value = pb_one.value(.{ .db = button3 }) },
-            .{ .label = " pb1" },
-            .{ .value = pb_two.value(.{ .db = button4 }) },
-            .{ .label = " pb2" },
+            .{ .label = "    " },
+            .{ .label = " X+" },
+            .{ .value = pb_dx_dir_a.value(.{ .db = button3 }) },
+            .{ .label = " X-" },
+            .{ .value = pb_dx_dir_b.value(.{ .db = button4 }) },
+        },
+    } },
+    .{ .popup = .{
+        .str = " Test Drive y\n",
+        .items = &.{
+            .{ .label = "    " },
+            .{ .label = " y+" },
+            .{ .value = pb_dy_dir_a.value(.{ .db = button3 }) },
+            .{ .label = " y-" },
+            .{ .value = pb_dy_dir_b.value(.{ .db = button4 }) },
         },
     } },
     .{
@@ -146,12 +171,6 @@ const items: []const Item = &.{
 const tree = Tree.create(items, 16 - 1);
 const LCD = olimex_lcd.BufferedLCD(tree.bufferLines);
 const TuiImpl = TUI.Impl(tree, &button_masks);
-// fn core1() void {
-//     while (true) {
-//         const ev: Event = @enumFromInt(fifo.read_blocking());
-//         buttonEvent(ev);
-//     }
-// }
 
 pub fn main() !void {
     // init uart logging
@@ -172,59 +191,55 @@ pub fn main() !void {
         pin.set_function(.i2c);
     }
 
-    // pin_config.apply();
     std.log.info("i2c0.apply", .{});
     try i2c0.apply(.{ .clock_config = rp2xxx.clock_config });
     std.log.info("i2c_device", .{});
     var i2c_device = I2C_Device.init(i2c0, @enumFromInt(0x30), null);
     std.log.info("lcd", .{});
-    // button 1 and 4 are one shot buttons
     var lcd = LCD.init(i2c_device.datagram_device());
     var display = lcd.display();
     var buttons = lcd.buttons();
     var tuiImpl = TuiImpl.init(display);
     var tui = tuiImpl.tui();
     time.sleep_ms(100);
+
+    var drive_pins: struct {
+        x_enable: GPIO_Device,
+        x_dir_a: GPIO_Device,
+        x_dir_b: GPIO_Device,
+        y_enable: GPIO_Device,
+        y_dir_a: GPIO_Device,
+        y_dir_b: GPIO_Device,
+    } = undefined;
+    inline for (std.meta.fields(@TypeOf(drive_pins)), .{ 2, 3, 6, 7, 8, 9 }) |field, num| {
+        const pin = gpio.num(num);
+        pin.set_function(.sio);
+        @field(drive_pins, field.name) = GPIO_Device.init(pin);
+    }
+
     led.set_function(.sio);
     led.set_direction(.out);
+
+    var drive_x = Drive{
+        .enable_pin = drive_pins.x_enable.digital_io(),
+        .dir_a_pin = drive_pins.x_dir_a.digital_io(),
+        .dir_b_pin = drive_pins.x_dir_b.digital_io(),
+    };
+
+    var drive_y = Drive{
+        .enable_pin = drive_pins.y_enable.digital_io(),
+        .dir_a_pin = drive_pins.y_dir_a.digital_io(),
+        .dir_b_pin = drive_pins.y_dir_b.digital_io(),
+    };
+
+    try drive_x.begin();
+    try drive_y.begin();
+
     time.sleep_ms(1000); // we need some time after boot for i2c to become ready, otherwise
     //                      unsupported will be thrown
-    // multicore.launch_core1(core1);
-    // log.info("launched_core1", .{});
-    // lcd.write(0, 0, "Olimex Display");
-    // if (lcd.print(.{ 0, 1 })) {
-    //     // log.info("print", .{});
-    // } else |err| switch (err) {
-    //     error.IoError => log.err("IoError", .{}),
-    //     error.Timeout => log.err("Timeout", .{}),
-    //     error.DeviceBusy => log.err("DeviceBusy", .{}),
-    //     error.Unsupported => log.err("Unsupported", .{}),
-    //     error.NotConnected => log.err("NotConnected", .{}),
-    // }
-
-    // const d = std.fmt.digits2(menuSize);
-    // lcd.write(0, 1, &d);
-    // microzig.cpu.wfi();
-    //
-    // log.info("items.len:{d}, sections.len:{d}", .{ items.len, sections.len });
-    // log.info("initMenu()", .{});
-
-    // initMenu();
-    // log.info("initMenu done", .{});
-    // log.info("menu:\n{any}", .{menu});
-    // for (items, 0..) |i, j| {
-    //     log.info("items[{d}]:\n{any}", .{ j, i });
-    // }
-    // for (sections, 0..) |s, j| {
-    //     log.info("sections[{d}]:\n{any}", .{ j, s });
-    // }
-    // for (values, 0..) |v, j| {
-    //     log.info("values[{d}]: item={d}, size={d}, val={s}", .{ j, v.item, v.value.size(), v.value.get() });
-    // }
 
     display.cursor(0, 0, 0, 0, .select);
     time.sleep_ms(100);
-    // var last_buttons: u8 = 0;
     while (true) {
         var events: [8]Event = undefined;
         var ev_idx: u8 = 0;
@@ -232,10 +247,8 @@ pub fn main() !void {
         if (tui.print()) {} else |_| {}
         time.sleep_ms(100);
         const read_buttons = buttons.read();
-        // const read_buttons = display.readButtons();
         if (read_buttons) |b| {
             for (tui.buttonEvent(b)) |ev| {
-                // log.info("tui event with id:{d}", .{ev.id});
                 events[ev_idx] = .{ .id = @enumFromInt(ev.id), .pl = .{ .tui = ev.pl } };
                 ev_idx += 1;
             }
@@ -266,15 +279,16 @@ pub fn main() !void {
                 .BackLight => {
                     _ = lcd.setBackLight(ev.pl.tui.value);
                 },
-                .PushButton => {
-                    log.info("PushButton Event", .{});
+                .drive_x => {
+                    try drive_x.set(drive_x_state);
+                },
+                .drive_y => {
+                    try drive_y.set(drive_y_state);
                 },
                 // else => {
                 //     log.info("Unhandled Event", .{});
                 // },
             }
         }
-
-        //    time.sleep_ms(100);
     }
 }

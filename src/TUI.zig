@@ -315,7 +315,7 @@ pub fn Impl(comptime tree: Tree, button_masks_: []const u8) type {
                 .value => switch (self.values[item.ptr].value) {
                     .ro => false,
                     .rw => true,
-                    .button => true,
+                    .button => |button| if (button.direct_buttons.len > 0) false else true,
                 },
                 .label => false,
             };
@@ -333,9 +333,14 @@ pub fn Impl(comptime tree: Tree, button_masks_: []const u8) type {
             return test2m(buttonMask(b), low, high);
         }
 
-        fn test1(b: ButtonSemantics, high: u8) bool {
+        inline fn test1(b: ButtonSemantics, high: u8) bool {
             const m = buttonMask(b);
             return m != 0 and m & high == m;
+        }
+
+        inline fn clear(b: ButtonSemantics, v: *u8) void {
+            const m = buttonMask(b);
+            v.* &= ~m;
         }
 
         const Events = struct {
@@ -357,7 +362,9 @@ pub fn Impl(comptime tree: Tree, button_masks_: []const u8) type {
             }
         }
 
-        fn advanceCursor(self: *Self, but: u8) []const Event {
+        fn advanceCursor(self: *Self, but_: u8) []const Event {
+            var but = but_; // we tweek this to adjust last_button in cases
+            // where we enter and leave sections to inactivate the button release
             const sec: *RtSection = &self.sections[self.curSection];
             const lines = &sec.lines;
             var events = Events{}; // we can have maximal 8 buttons..
@@ -448,6 +455,8 @@ pub fn Impl(comptime tree: Tree, button_masks_: []const u8) type {
                                         push(ev, .{ .id = id, .pl = .{ .section = .leave } });
                                     }
                                     self.curSection = sec.parent;
+                                    clear(.escape, &but);
+                                    break :sec_sw;
                                 }
                             }
                             const activate_pressed = test2(.activate, lbut, but);
@@ -461,6 +470,8 @@ pub fn Impl(comptime tree: Tree, button_masks_: []const u8) type {
                                             if (sec_.id) |id| {
                                                 push(ev, .{ .id = id, .pl = .{ .section = .enter } });
                                             }
+                                            clear(.activate, &but);
+                                            break :sec_sw;
                                         }
                                     },
                                     .value => {
@@ -469,6 +480,8 @@ pub fn Impl(comptime tree: Tree, button_masks_: []const u8) type {
                                                 // should be on a selectable one
                                                 if (activate_pressed) {
                                                     mode.* = .change_value;
+                                                    clear(.activate, &but);
+                                                    break :sec_sw;
                                                 }
                                             },
                                             .button => |button| {
@@ -501,6 +514,8 @@ pub fn Impl(comptime tree: Tree, button_masks_: []const u8) type {
                                     }
                                     if (test1(.escape, but)) {
                                         mode.* = .select_item;
+                                        clear(.escape, &but);
+                                        break :sec_sw;
                                     }
                                 },
                                 else => {},
@@ -522,6 +537,8 @@ pub fn Impl(comptime tree: Tree, button_masks_: []const u8) type {
                                     push(ev, .{ .id = id, .pl = .{ .section = .leave } });
                                 }
                                 self.curSection = sec.parent;
+                                clear(.escape, &but);
+                                break :sec_sw;
                             }
                         },
                         else => {},
@@ -562,6 +579,8 @@ pub fn Impl(comptime tree: Tree, button_masks_: []const u8) type {
                             push(ev, .{ .id = id, .pl = .{ .section = .leave } });
                         }
                         self.curSection = sec.parent;
+                        clear(.escape, &but);
+                        break :sec_sw;
                     }
                 },
             }
