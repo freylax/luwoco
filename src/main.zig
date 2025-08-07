@@ -2,6 +2,7 @@ const std = @import("std");
 const microzig = @import("microzig");
 const olimex_lcd = @import("olimex_lcd.zig");
 const Drive = @import("Drive.zig");
+const Relais = @import("Relais.zig");
 const Buttons = @import("tui/Buttons.zig");
 const Tree = @import("tui/Tree.zig");
 const TUI = @import("TUI.zig");
@@ -42,6 +43,8 @@ const EventId = enum(u16) {
     BackLight,
     drive_x,
     drive_y,
+    relais_a,
+    relais_b,
     pub fn id(self: EventId) u16 {
         return @intFromEnum(self);
     }
@@ -104,6 +107,20 @@ var pb_dy_dir_b = RefPushButton(Drive.State){
     .released = .off,
     .id = EventId.drive_y.id(),
 };
+var relais_a_state: Relais.State = .off;
+var pb_relais_a = RefPushButton(Relais.State){
+    .ref = &relais_a_state,
+    .pressed = .on,
+    .released = .off,
+    .id = EventId.relais_a.id(),
+};
+var relais_b_state: Relais.State = .off;
+var pb_relais_b = RefPushButton(Relais.State){
+    .ref = &relais_b_state,
+    .pressed = .on,
+    .released = .off,
+    .id = EventId.relais_b.id(),
+};
 
 const items: []const Item = &.{
     .{
@@ -136,6 +153,18 @@ const items: []const Item = &.{
             .{ .value = pb_dy_dir_b.value(.{ .db = button4 }) },
         },
     } },
+
+    .{ .popup = .{
+        .str = " Relais Test\n",
+        .items = &.{
+            .{ .label = "    " },
+            .{ .label = " A " },
+            .{ .value = pb_relais_a.value(.{ .db = button3 }) },
+            .{ .label = " B " },
+            .{ .value = pb_relais_b.value(.{ .db = button4 }) },
+        },
+    } },
+
     .{
         .popup = .{
             .str = " Characters\n",
@@ -203,37 +232,45 @@ pub fn main() !void {
     var tui = tuiImpl.tui();
     time.sleep_ms(100);
 
-    var drive_pins: struct {
+    var out_pins: struct {
         x_enable: GPIO_Device,
         x_dir_a: GPIO_Device,
         x_dir_b: GPIO_Device,
         y_enable: GPIO_Device,
         y_dir_a: GPIO_Device,
         y_dir_b: GPIO_Device,
+        relais_a: GPIO_Device,
+        relais_b: GPIO_Device,
     } = undefined;
-    inline for (std.meta.fields(@TypeOf(drive_pins)), .{ 2, 3, 6, 7, 8, 9 }) |field, num| {
+    inline for (std.meta.fields(@TypeOf(out_pins)), .{ 8, 9, 10, 11, 12, 13, 14, 15 }) |field, num| {
         const pin = gpio.num(num);
         pin.set_function(.sio);
-        @field(drive_pins, field.name) = GPIO_Device.init(pin);
+        @field(out_pins, field.name) = GPIO_Device.init(pin);
     }
 
     led.set_function(.sio);
     led.set_direction(.out);
 
     var drive_x = Drive{
-        .enable_pin = drive_pins.x_enable.digital_io(),
-        .dir_a_pin = drive_pins.x_dir_a.digital_io(),
-        .dir_b_pin = drive_pins.x_dir_b.digital_io(),
+        .enable_pin = out_pins.x_enable.digital_io(),
+        .dir_a_pin = out_pins.x_dir_a.digital_io(),
+        .dir_b_pin = out_pins.x_dir_b.digital_io(),
     };
 
     var drive_y = Drive{
-        .enable_pin = drive_pins.y_enable.digital_io(),
-        .dir_a_pin = drive_pins.y_dir_a.digital_io(),
-        .dir_b_pin = drive_pins.y_dir_b.digital_io(),
+        .enable_pin = out_pins.y_enable.digital_io(),
+        .dir_a_pin = out_pins.y_dir_a.digital_io(),
+        .dir_b_pin = out_pins.y_dir_b.digital_io(),
     };
 
     try drive_x.begin();
     try drive_y.begin();
+
+    var relais_a = Relais{ .pin = out_pins.relais_a.digital_io() };
+    var relais_b = Relais{ .pin = out_pins.relais_b.digital_io() };
+
+    try relais_a.begin();
+    try relais_b.begin();
 
     time.sleep_ms(1000); // we need some time after boot for i2c to become ready, otherwise
     //                      unsupported will be thrown
@@ -284,6 +321,12 @@ pub fn main() !void {
                 },
                 .drive_y => {
                     try drive_y.set(drive_y_state);
+                },
+                .relais_a => {
+                    try relais_a.set(relais_a_state);
+                },
+                .relais_b => {
+                    try relais_b.set(relais_b_state);
                 },
                 // else => {
                 //     log.info("Unhandled Event", .{});
