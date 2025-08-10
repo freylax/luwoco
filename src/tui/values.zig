@@ -18,6 +18,24 @@ pub const StrValue = struct {
     }
 };
 
+pub const BulbValue = struct {
+    val: bool = false,
+    buf: [3]u8 = .{ '(', 'O', ')' },
+    pub fn value(self: *BulbValue) Value {
+        return .{ .ro = .{
+            .size = 3,
+            .ptr = self,
+            .vtable = &.{ .get = get },
+        } };
+    }
+
+    fn get(ctx: *anyopaque) []const u8 {
+        const self: *BulbValue = @ptrCast(@alignCast(ctx));
+        self.buf[1] = if (self.val) 'X' else 'O';
+        return &self.buf;
+    }
+};
+
 pub const IntValue = struct {
     min: u8 = 0,
     max: u8,

@@ -1,5 +1,6 @@
 const std = @import("std");
 const microzig = @import("microzig");
+const peripherals = microzig.chip.peripherals;
 const olimex_lcd = @import("olimex_lcd.zig");
 const Drive = @import("Drive.zig");
 const Relais = @import("Relais.zig");
@@ -11,9 +12,11 @@ const Item = Tree.Item;
 const values = @import("tui/values.zig");
 const IntValue = values.IntValue;
 const RefPushButton = values.RefPushButton;
+const BulbValue = values.BulbValue;
 
 const rp2xxx = microzig.hal;
 const gpio = rp2xxx.gpio;
+const interrupt = microzig.cpu.interrupt;
 const i2c = rp2xxx.i2c;
 const time = rp2xxx.time;
 const I2C_Device = rp2xxx.drivers.I2C_Device;
@@ -29,9 +32,16 @@ const uart = rp2xxx.uart.instance.num(0);
 const baud_rate = 115200;
 const uart_tx_pin = gpio.num(0);
 
+const timer = peripherals.TIMER;
+const timer_irq = .TIMER_IRQ_0;
+
 pub const microzig_options = microzig.Options{
     .log_level = .info,
     .logFn = rp2xxx.uart.log,
+    .interrupts = .{
+        .TIMER_IRQ_0 = .{ .c = timer_interrupt },
+        .IO_IRQ_BANK0 = .{ .c = gpio_handler },
+    },
 };
 
 const led = gpio.num(25);
@@ -122,6 +132,8 @@ var pb_relais_b = RefPushButton(Relais.State){
     .id = EventId.relais_b.id(),
 };
 
+var input_a = BulbValue{};
+
 const items: []const Item = &.{
     .{
         .popup = .{
@@ -165,6 +177,14 @@ const items: []const Item = &.{
         },
     } },
 
+    .{ .popup = .{
+        .str = " Input Test\n",
+        .items = &.{
+            .{ .label = "a:" },
+            .{ .value = input_a.value() },
+        },
+    } },
+
     .{
         .popup = .{
             .str = " Characters\n",
@@ -196,6 +216,36 @@ const items: []const Item = &.{
         },
     },
 };
+
+fn timer_interrupt() callconv(.c) void {
+    const cs = microzig.interrupt.enter_critical_section();
+    defer cs.leave();
+    input_a.val = if (input_a.val) false else true;
+
+    timer.INTR.modify(.{ .ALARM_0 = 1 });
+
+    set_alarm(1_000_000);
+}
+
+fn gpio_handler() callconv(.C) void {
+    // Acknowledge/clear the interrupt. With an edge-triggered interrupt,
+    //  when missing the acknowledge, the interrupt triggers repeatedly forever
+    // We're "listening" for falling-edge events on pin 18
+    // Search for "INTR0 Register" in the rp2040 datasheet
+    // You can also read this register to determine which events have triggered
+    // Note: This line is deceptive. It acknowledges every outstanding GPIO event on INTR2
+    //     because modify is implemented as a read and then a write, and other bits will be 1 if they are active
+    peripherals.IO_BANK0.INTR2.modify(.{ .GPIO16_EDGE_LOW = 1 });
+    input_a.val = if (input_a.val) false else true;
+}
+
+pub fn set_alarm(us: u32) void {
+    const Duration = microzig.drivers.time.Duration;
+    const current = time.get_time_since_boot();
+    const target = current.add_duration(Duration.from_us(us));
+
+    timer.ALARM0.write_raw(@intCast(@intFromEnum(target) & 0xffffffff));
+}
 
 const tree = Tree.create(items, 16 - 1);
 const LCD = olimex_lcd.BufferedLCD(tree.bufferLines);
@@ -248,6 +298,16 @@ pub fn main() !void {
         @field(out_pins, field.name) = GPIO_Device.init(pin);
     }
 
+    const in_a = gpio.num(16);
+    in_a.set_direction(.in);
+    in_a.set_pull(.up);
+
+    peripherals.PPB.NVIC_ISER.modify(.{
+        .SETENA = 1 << 13, // 13 is IO_IRQ_BANK0
+    });
+
+    peripherals.IO_BANK0.PROC0_INTE2.modify(.{ .GPIO16_EDGE_LOW = 1 });
+
     led.set_function(.sio);
     led.set_direction(.out);
 
@@ -273,6 +333,20 @@ pub fn main() !void {
     try relais_b.begin();
 
     time.sleep_ms(1000); // we need some time after boot for i2c to become ready, otherwise
+
+    // set_alarm(1_000_000);
+
+    // timer.INTE.toggle(.{ .ALARM_0 = 1 });
+
+    // interrupt.enable(timer_irq);
+
+    // Enable machine external interrupts on RISC-V
+    // if (rp2xxx.compatibility.arch == .riscv) {
+    // microzig.cpu.interrupt.core.enable(.MachineExternal);
+    // }
+
+    microzig.cpu.interrupt.enable_interrupts();
+
     //                      unsupported will be thrown
 
     display.cursor(0, 0, 0, 0, .select);
