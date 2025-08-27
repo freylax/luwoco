@@ -4,9 +4,12 @@ const peripherals = microzig.chip.peripherals;
 const olimex_lcd = @import("olimex_lcd.zig");
 const Drive = @import("Drive.zig");
 const Relais = @import("Relais.zig");
+const IntrButton = @import("IntrButton.zig");
+const PositionSensor = @import("PositionSensor.zig");
 const Buttons = @import("tui/Buttons.zig");
 const Tree = @import("tui/Tree.zig");
 const TUI = @import("TUI.zig");
+const IO = @import("IO.zig");
 
 const Item = Tree.Item;
 const values = @import("tui/values.zig");
@@ -88,6 +91,8 @@ const button_masks = blk: {
     break :blk a;
 };
 
+var io: IO = .{};
+
 var back_light = IntValue{ .min = 0, .max = 255, .val = 0, .id = EventId.BackLight.id() };
 
 var drive_x_state: Drive.State = .off;
@@ -131,8 +136,6 @@ var pb_relais_b = RefPushButton(Relais.State){
     .released = .off,
     .id = EventId.relais_b.id(),
 };
-
-var input_a = BulbValue{};
 
 const items: []const Item = &.{
     .{
@@ -178,10 +181,14 @@ const items: []const Item = &.{
     } },
 
     .{ .popup = .{
-        .str = " Input Test\n",
+        .str = " Input Test pos_x\n",
         .items = &.{
-            .{ .label = "a:" },
-            .{ .value = input_a.value() },
+            .{ .label = "pos:" },
+            .{ .value = IO.pos_x_pos.value() },
+            .{ .label = " min:" },
+            .{ .value = IO.pos_x_min.value() },
+            .{ .label = " max:" },
+            .{ .value = IO.pos_x_max.value() },
         },
     } },
 
@@ -220,7 +227,7 @@ const items: []const Item = &.{
 fn timer_interrupt() callconv(.c) void {
     const cs = microzig.interrupt.enter_critical_section();
     defer cs.leave();
-    input_a.val = if (input_a.val) false else true;
+    // input_a.val = if (input_a.val) false else true;
 
     timer.INTR.modify(.{ .ALARM_0 = 1 });
 
@@ -235,8 +242,28 @@ fn gpio_handler() callconv(.C) void {
     // You can also read this register to determine which events have triggered
     // Note: This line is deceptive. It acknowledges every outstanding GPIO event on INTR2
     //     because modify is implemented as a read and then a write, and other bits will be 1 if they are active
-    peripherals.IO_BANK0.INTR2.modify(.{ .GPIO16_EDGE_LOW = 1 });
-    input_a.val = if (input_a.val) false else true;
+
+    // const M = PositionSensor.Masks;
+    // const s = try io.pos_x.state();
+    // if(PositionSensor.Masks.test(.pos,s)) {
+    //   peripherals.IO_BANK0.INTR2.modify(.{ .GPIO16_EDGE_HIGH = 1 });
+    //   pos_x_pos.val=true;
+    // } else {
+    //   pos_x_pos.val=false;
+    // }
+    //  if(M.min.test(s)) {
+    //   peripherals.IO_BANK0.INTR2.modify(.{ .GPIO17_EDGE_HIGH = 1 });
+    //   pos_x_min.val=true;
+    // } else {
+    //   pos_x_min.val=false;
+    // }
+    //  if(M.max.test(s)) {
+    //   peripherals.IO_BANK0.INTR2.modify(.{ .GPIO18_EDGE_HIGH = 1 });
+    //   pos_x_max.val=true;
+    // } else {
+    //   pos_x_max.val=false;
+    // }
+
 }
 
 pub fn set_alarm(us: u32) void {
@@ -262,6 +289,8 @@ pub fn main() !void {
 
     std.log.info("Set GPIO pins", .{});
 
+    IO.init();
+
     const scl_pin = gpio.num(5);
     const sda_pin = gpio.num(4);
     inline for (&.{ scl_pin, sda_pin }) |pin| {
@@ -282,55 +311,20 @@ pub fn main() !void {
     var tui = tuiImpl.tui();
     time.sleep_ms(100);
 
-    var out_pins: struct {
-        x_enable: GPIO_Device,
-        x_dir_a: GPIO_Device,
-        x_dir_b: GPIO_Device,
-        y_enable: GPIO_Device,
-        y_dir_a: GPIO_Device,
-        y_dir_b: GPIO_Device,
-        relais_a: GPIO_Device,
-        relais_b: GPIO_Device,
-    } = undefined;
-    inline for (std.meta.fields(@TypeOf(out_pins)), .{ 8, 9, 10, 11, 12, 13, 14, 15 }) |field, num| {
-        const pin = gpio.num(num);
-        pin.set_function(.sio);
-        @field(out_pins, field.name) = GPIO_Device.init(pin);
-    }
+    try IO.begin();
+    // interrupt set enable register
+    // peripherals.PPB.NVIC_ISER.modify(.{
+    //     .SETENA = 1 << 13, // 13 is IO_IRQ_BANK0
+    // });
 
-    const in_a = gpio.num(16);
-    in_a.set_direction(.in);
-    in_a.set_pull(.up);
-
-    peripherals.PPB.NVIC_ISER.modify(.{
-        .SETENA = 1 << 13, // 13 is IO_IRQ_BANK0
-    });
-
-    peripherals.IO_BANK0.PROC0_INTE2.modify(.{ .GPIO16_EDGE_LOW = 1 });
+    // peripherals.IO_BANK0.PROC0_INTE2.modify(.{
+    //     .GPIO16_EDGE_HIGH = 1,
+    //     .GPIO17_EDGE_HIGH = 1,
+    //     .GPIO18_EDGE_HIGH = 1,
+    // });
 
     led.set_function(.sio);
     led.set_direction(.out);
-
-    var drive_x = Drive{
-        .enable_pin = out_pins.x_enable.digital_io(),
-        .dir_a_pin = out_pins.x_dir_a.digital_io(),
-        .dir_b_pin = out_pins.x_dir_b.digital_io(),
-    };
-
-    var drive_y = Drive{
-        .enable_pin = out_pins.y_enable.digital_io(),
-        .dir_a_pin = out_pins.y_dir_a.digital_io(),
-        .dir_b_pin = out_pins.y_dir_b.digital_io(),
-    };
-
-    try drive_x.begin();
-    try drive_y.begin();
-
-    var relais_a = Relais{ .pin = out_pins.relais_a.digital_io() };
-    var relais_b = Relais{ .pin = out_pins.relais_b.digital_io() };
-
-    try relais_a.begin();
-    try relais_b.begin();
 
     time.sleep_ms(1000); // we need some time after boot for i2c to become ready, otherwise
 
@@ -345,7 +339,7 @@ pub fn main() !void {
     // microzig.cpu.interrupt.core.enable(.MachineExternal);
     // }
 
-    microzig.cpu.interrupt.enable_interrupts();
+    // microzig.cpu.interrupt.enable_interrupts();
 
     //                      unsupported will be thrown
 
@@ -391,16 +385,16 @@ pub fn main() !void {
                     _ = lcd.setBackLight(ev.pl.tui.value);
                 },
                 .drive_x => {
-                    try drive_x.set(drive_x_state);
+                    try IO.drive_x.set(drive_x_state);
                 },
                 .drive_y => {
-                    try drive_y.set(drive_y_state);
+                    try IO.drive_y.set(drive_y_state);
                 },
                 .relais_a => {
-                    try relais_a.set(relais_a_state);
+                    try IO.relais_a.set(relais_a_state);
                 },
                 .relais_b => {
-                    try relais_b.set(relais_b_state);
+                    try IO.relais_b.set(relais_b_state);
                 },
                 // else => {
                 //     log.info("Unhandled Event", .{});
