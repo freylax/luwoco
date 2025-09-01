@@ -88,6 +88,29 @@ pub const IntValue = struct {
     }
 };
 
+pub const RoIntValue = struct {
+    val: u32,
+    buf: [8]u8 = [_]u8{' '} ** 8,
+    // fn size(max: u8) u8 {
+    //     return 1 + if (max > 99) 3 else if (max > 9) 2 else 1;
+    // }
+    pub fn value(self: *RoIntValue) Value {
+        return .{
+            .ro = .{
+                // .id = self.id,
+                .size = 8, //comptime size(self.max),
+                .ptr = self,
+                .vtable = &.{ .get = get },
+            },
+        };
+    }
+    fn get(ctx: *anyopaque) []const u8 {
+        const self: *RoIntValue = @ptrCast(@alignCast(ctx));
+        _ = std.fmt.formatIntBuf(&self.buf, self.val, 16, .lower, .{ .alignment = .right, .width = 8 });
+        return &self.buf;
+    }
+};
+
 pub const PushButton = struct {
     val: bool = false,
     id: ?u16 = null,

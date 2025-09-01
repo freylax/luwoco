@@ -26,7 +26,7 @@ RP2040 Pico
 LCD Connection
 O LCD  |   PICO
 -------+-------
-5V     | VBUS
+5V     | VBUS -- VSYS
 3V3    | 3V3
 GND    | GND
 SCL    | PIN7 I2C0 SCL 
@@ -39,6 +39,56 @@ USB-Serial |  PICO
 Tx(red)    | Rx Uart0 (2)
 Rx(green)  | Tx Uart0 (1)
 	
-```
 
+VSYS get the 5 V input 
+------------------------------------
+DC/DC-Wandler, 1 W, 5 V, SIL 7
+1S7E_2405S1.5UP
+
+  1 2   4   6    --+----
+                 1 | Vin 24V
+				 2 | GND
+				 4 | 0V
+				 6 | 5V
+-------------------------------------				
+X,Y Drive     BB-L298 Dual Full Bridge Driver
  
+    |Pico|Pico| 
+    |GPIO|PIN | BB-L298
+----+----+----+--------
+	|    |    | 1  5V
+    |    |    | 8 GND
+X en| 2  |  4 | 2  enA
+X da| 3  |  5 | 3  IN1
+X db| 6  |  9 | 4  IN2
+Y en| 7  | 10 | 5  enB
+Y da| 8  | 11 | 6  IN3
+Y db| 9  | 12 | 7  IN4
+---------------------------------------
+Input switches
+
+pull up mode
+
+             o +3.3 V
+             |
+            R1 1K
+             |  100
+Input Pin  --+--R2  --+
+             |        |
+			 0.1uF    Switch
+             |        |
+             o Ground o 
+
+     |Pico|Pico|
+	 |GPIO|Pin |
+-----+----+----+--------------
+     | 16 | 21
+	 | 17 | 22
+	 | 18 | 24
+	 | 19 | 25
+	 | 20 | 26
+	 | 21 | 27
+
+
+			    							
+```

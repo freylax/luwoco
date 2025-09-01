@@ -20,7 +20,8 @@ nrItems: [nrCounters]u16,
 totalNrItems: u16,
 bufferLines: u16,
 
-pub fn create(items: []const Item, line_end: u8) Tree {
+pub fn create(items: []const Item, line_end: u8, evalBranchQuota: u32) Tree {
+    @setEvalBranchQuota(evalBranchQuota);
     const nrItems = calcTreeSize: {
         var counter = [_]u16{0} ** nrCounters;
         treeSize(items, &counter);

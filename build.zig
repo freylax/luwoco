@@ -15,7 +15,7 @@ pub fn build(b: *std.Build) void {
     //
     // The target will convey all necessary information on the chip,
     // cpu and potentially the board as well.
-    const firmware = mb.add_firmware(.{
+    const luwoco = mb.add_firmware(.{
         .name = "luwoco",
         .target = mb.ports.rp2xxx.boards.raspberrypi.pico,
         .optimize = optimize,
@@ -26,8 +26,17 @@ pub fn build(b: *std.Build) void {
     // and allows installing the firmware as a typical firmware file.
     //
     // This will also install into `$prefix/firmware` instead of `$prefix/bin`.
-    mb.install_firmware(firmware, .{});
+    mb.install_firmware(luwoco, .{});
 
     // For debugging, we also always install the firmware as an ELF file
-    mb.install_firmware(firmware, .{ .format = .elf });
+    mb.install_firmware(luwoco, .{ .format = .elf });
+
+    const intr = mb.add_firmware(.{
+        .name = "intr",
+        .target = mb.ports.rp2xxx.boards.raspberrypi.pico,
+        .optimize = optimize,
+        .root_source_file = b.path("src/intr.zig"),
+    });
+    mb.install_firmware(intr, .{});
+    mb.install_firmware(intr, .{ .format = .elf });
 }
