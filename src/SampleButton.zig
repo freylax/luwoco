@@ -10,7 +10,7 @@ pin: drivers.base.Digital_IO, // = null,
 active: drivers.base.Digital_IO.State = .high,
 buf: [3]u8 = .{ '(', 'E', ')' },
 last_change: time.Absolute = .from_us(0),
-state: bool = false,
+is_active: bool = false,
 min_switch_time: time.Duration = .from_ms(10),
 
 pub fn readValue(self: *Self) Value {
@@ -46,7 +46,7 @@ pub fn sampleValue(self: *Self) Value {
 
 fn getSample(ctx: *anyopaque) []const u8 {
     const self: *Self = @ptrCast(@alignCast(ctx));
-    self.buf[1] = if (self.state) 'X' else 'O';
+    self.buf[1] = if (self.is_active) 'X' else 'O';
     return &self.buf;
 }
 
@@ -58,9 +58,9 @@ pub const Event = enum {
 
 pub fn sample(self: *Self, sample_time: time.Absolute) !Event {
     const s = try self.read();
-    if (s != self.state) {
+    if (s != self.is_active) {
         if (self.min_switch_time.less_than(sample_time.diff(self.last_change))) {
-            self.state = s;
+            self.is_active = s;
             self.last_change = sample_time;
             return if (s) .changed_to_active else .changed_to_inactive;
         }

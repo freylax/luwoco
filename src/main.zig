@@ -267,13 +267,6 @@ const items: []const Item = &.{
 pub fn switch_handler() callconv(.C) void {
     const cs = microzig.interrupt.enter_critical_section();
     defer cs.leave();
-    // Acknowledge/clear the interrupt. With an edge-triggered interrupt,
-    //  when missing the acknowledge, the interrupt triggers repeatedly forever
-    // We're "listening" for falling-edge events on pin 18
-    // Search for "INTR0 Register" in the rp2040 datasheet
-    // You can also read this register to determine which events have triggered
-    // Note: This line is deceptive. It acknowledges every outstanding GPIO event on INTR2
-    //     because modify is implemented as a read and then a write, and other bits will be 1 if they are active
     const IO_BANK0 = peripherals.IO_BANK0;
     const r = IO_BANK0.INTR2.read();
     // confirm the interrupt

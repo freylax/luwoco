@@ -78,15 +78,15 @@ pub var relais_a = Relais{ .pin = iod.relais_a.digital_io() };
 pub var relais_b = Relais{ .pin = iod.relais_b.digital_io() };
 pub var drive_x_control = DriveControler{
     .drive = &drive_x,
-    .pos = &pos_x_pos,
-    .min = &pos_x_min,
-    .max = &pos_x_max,
+    .pos_bt = &pos_x_pos,
+    .min_bt = &pos_x_min,
+    .max_bt = &pos_x_max,
 };
 pub var drive_y_control = DriveControler{
     .drive = &drive_y,
-    .pos = &pos_y_pos,
-    .min = &pos_y_min,
-    .max = &pos_y_max,
+    .pos_bt = &pos_y_pos,
+    .min_bt = &pos_y_min,
+    .max_bt = &pos_y_max,
 };
 
 pub fn init() !void {
@@ -131,4 +131,6 @@ pub fn begin() !void {
     _ = try pos_y_pos.sample(t);
     _ = try pos_y_min.sample(t);
     _ = try pos_y_max.sample(t);
+    try drive_x_control.begin();
+    try drive_y_control.begin();
 }
