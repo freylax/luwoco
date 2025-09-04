@@ -5,6 +5,7 @@ const olimex_lcd = @import("olimex_lcd.zig");
 const Drive = @import("Drive.zig");
 const Relais = @import("Relais.zig");
 const Buttons = @import("tui/Buttons.zig");
+const DriveControlUI = @import("DriveControlUI.zig");
 const Tree = @import("tui/Tree.zig");
 const TUI = @import("TUI.zig");
 const IO = @import("IO.zig");
@@ -12,7 +13,6 @@ const IO = @import("IO.zig");
 const Item = Tree.Item;
 const values = @import("tui/values.zig");
 const IntValue = values.IntValue;
-const RoIntValue = values.RoIntValue;
 const RefPushButton = values.RefPushButton;
 const BulbValue = values.BulbValue;
 
@@ -122,7 +122,7 @@ var pb_relais_b = RefPushButton(Relais.State){
     .id = EventId.relais_b.id(),
 };
 
-var intr_reg = RoIntValue{ .val = 0 };
+var drive_x_ui = DriveControlUI.create(&IO.drive_x_control);
 
 const items: []const Item = &.{
     .{ .popup = .{
@@ -168,6 +168,24 @@ const items: []const Item = &.{
             } },
         },
     } },
+    .{ .popup = .{ .str = " control test\n", .items = &.{
+        .{ .popup = .{
+            .str = " drive x\n",
+            .items = &.{
+                .{ .label = "pos:" },
+                .{ .value = drive_x_ui.lastPos.value() },
+                .{ .label = " =>" },
+                .{ .value = drive_x_ui.targetPos.value() },
+                .{ .label = "\n" },
+                .{ .label = "#" },
+                .{ .value = drive_x_ui.stopBt.value(.{ .db = button2 }) },
+                .{ .label = " +" },
+                .{ .value = drive_x_ui.fwBt.value(.{ .db = button3 }) },
+                .{ .label = " -" },
+                .{ .value = drive_x_ui.bwBt.value(.{ .db = button4 }) },
+            },
+        } },
+    } } },
     .{ .popup = .{
         .str = " input test\n",
         .items = &.{
@@ -215,13 +233,6 @@ const items: []const Item = &.{
                     .{ .value = IO.pos_y_max.sampleValue() },
                 },
             } },
-            .{ .popup = .{
-                .str = " Intr Test\n",
-                .items = &.{
-                    .{ .label = "reg:" },
-                    .{ .value = intr_reg.value() },
-                },
-            } },
         },
     } },
     .{
@@ -265,8 +276,9 @@ const items: []const Item = &.{
 // }
 
 pub fn switch_handler() callconv(.C) void {
+    // disable interrupts
     const cs = microzig.interrupt.enter_critical_section();
-    defer cs.leave();
+    defer cs.leave(); // enable interrupts
     const IO_BANK0 = peripherals.IO_BANK0;
     const r = IO_BANK0.INTR2.read();
     // confirm the interrupt
@@ -274,7 +286,7 @@ pub fn switch_handler() callconv(.C) void {
     const t = time.get_time_since_boot();
     if (IO.drive_x_control.sample(t)) {} else |_| {}
     if (IO.drive_y_control.sample(t)) {} else |_| {}
-    intr_reg.val = @bitCast(r);
+    // intr_reg.val = @bitCast(r);
 }
 
 // pub fn set_alarm(us: u32) void {
@@ -307,7 +319,6 @@ pub fn main() !void {
     // we need some time after boot for i2c to become ready, otherwise
     // unsupported will be thrown
     time.sleep_ms(1000);
-    intr_reg.val = 25;
     display.cursor(0, 0, 0, 0, .select);
     time.sleep_ms(100);
     while (true) {

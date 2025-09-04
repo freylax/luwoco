@@ -4,7 +4,7 @@ const peripherals = microzig.chip.peripherals;
 const Drive = @import("Drive.zig");
 const Relais = @import("Relais.zig");
 const SampleButton = @import("SampleButton.zig");
-const DriveControler = @import("DriveControler.zig");
+const DriveControl = @import("DriveControl.zig");
 const rp2xxx = microzig.hal;
 const gpio = rp2xxx.gpio;
 const time = rp2xxx.time;
@@ -76,13 +76,13 @@ pub var drive_y = Drive{
 };
 pub var relais_a = Relais{ .pin = iod.relais_a.digital_io() };
 pub var relais_b = Relais{ .pin = iod.relais_b.digital_io() };
-pub var drive_x_control = DriveControler{
+pub var drive_x_control = DriveControl{
     .drive = &drive_x,
     .pos_bt = &pos_x_pos,
     .min_bt = &pos_x_min,
     .max_bt = &pos_x_max,
 };
-pub var drive_y_control = DriveControler{
+pub var drive_y_control = DriveControl{
     .drive = &drive_y,
     .pos_bt = &pos_y_pos,
     .min_bt = &pos_y_min,

@@ -88,28 +88,27 @@ pub const IntValue = struct {
     }
 };
 
-pub const RoIntValue = struct {
-    val: u32,
-    buf: [8]u8 = [_]u8{' '} ** 8,
-    // fn size(max: u8) u8 {
-    //     return 1 + if (max > 99) 3 else if (max > 9) 2 else 1;
-    // }
-    pub fn value(self: *RoIntValue) Value {
-        return .{
-            .ro = .{
-                // .id = self.id,
-                .size = 8, //comptime size(self.max),
-                .ptr = self,
-                .vtable = &.{ .get = get },
-            },
-        };
-    }
-    fn get(ctx: *anyopaque) []const u8 {
-        const self: *RoIntValue = @ptrCast(@alignCast(ctx));
-        _ = std.fmt.formatIntBuf(&self.buf, self.val, 16, .lower, .{ .alignment = .right, .width = 8 });
-        return &self.buf;
-    }
-};
+pub fn RoRefIntValue(comptime T: type, comptime size: u8, comptime base: u8) type {
+    return struct {
+        const Self = @This();
+        ref: *T,
+        buf: [size]u8 = [_]u8{' '} ** size,
+        pub fn value(self: *Self) Value {
+            return .{
+                .ro = .{
+                    .size = size,
+                    .ptr = self,
+                    .vtable = &.{ .get = get },
+                },
+            };
+        }
+        fn get(ctx: *anyopaque) []const u8 {
+            const self: *Self = @ptrCast(@alignCast(ctx));
+            _ = std.fmt.formatIntBuf(&self.buf, self.ref.*, base, .lower, .{ .alignment = .right, .width = size });
+            return &self.buf;
+        }
+    };
+}
 
 pub const PushButton = struct {
     val: bool = false,
@@ -210,6 +209,67 @@ pub fn RefPushButton(comptime T: type) type {
             return self.ref.* == self.pressed or self.ref.* == self.released;
         }
         fn enabled(ctx: *anyopaque) bool {
+            const self: *Self = @ptrCast(@alignCast(ctx));
+            return enabled_(self);
+        }
+    };
+}
+pub fn ClickButton(comptime T: type) type {
+    return struct {
+        const Self = @This();
+        ref: *T,
+        enabled: *const fn (*T) bool,
+        clicked: *const fn (*T) void,
+        id: ?u16 = null,
+        buf: [3]u8 = [_]u8{' '} ** 3,
+        pressed: bool = false,
+        pub const Opt = struct {
+            db: ?u8 = null,
+        };
+        pub fn value(self: *Self, opt: Opt) Value {
+            return .{
+                .button = .{
+                    .behavior = .one_click,
+                    .size = self.buf.len,
+                    .direct_buttons = if (opt.db) |db| &.{db} else &.{},
+                    .ptr = self,
+                    .vtable = &.{ .get = get, .set = set, .reset = reset, .enabled = enabled_cb },
+                },
+            };
+        }
+        fn get(ctx: *anyopaque) []const u8 {
+            const self: *Self = @ptrCast(@alignCast(ctx));
+            if (self.enabled_()) {
+                self.buf[0] = '(';
+                self.buf[2] = ')';
+            } else {
+                self.buf[0] = '[';
+                self.buf[2] = ']';
+            }
+            self.buf[1] = if (self.pressed) '*' else 'o';
+            return &self.buf;
+        }
+        fn event(self: *Self) ?Event {
+            return if (self.id) |id|
+                .{ .id = id, .pl = .{ .button = self.pressed } }
+            else
+                null;
+        }
+        fn set(ctx: *anyopaque) ?Event {
+            const self: *Self = @ptrCast(@alignCast(ctx));
+            self.pressed = true;
+            self.clicked(self.ref);
+            return self.event();
+        }
+        fn reset(ctx: *anyopaque) ?Event {
+            const self: *Self = @ptrCast(@alignCast(ctx));
+            self.pressed = false;
+            return self.event();
+        }
+        fn enabled_(self: *Self) bool {
+            return self.enabled(self.ref);
+        }
+        fn enabled_cb(ctx: *anyopaque) bool {
             const self: *Self = @ptrCast(@alignCast(ctx));
             return enabled_(self);
         }

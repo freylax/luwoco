@@ -486,7 +486,7 @@ pub fn Impl(comptime tree: Tree, button_masks_: []const u8) type {
                                             },
                                             .button => |button| {
                                                 switch (button.behavior) {
-                                                    .push_button => {
+                                                    .push_button, .one_click => {
                                                         if (activate_pressed) {
                                                             push_o(ev, button.set());
                                                         } else if (activate_released) {
@@ -556,7 +556,7 @@ pub fn Impl(comptime tree: Tree, button_masks_: []const u8) type {
                                 .button => |button| {
                                     if (button.enabled()) {
                                         switch (button.behavior) {
-                                            .push_button => {
+                                            .push_button, .one_click => {
                                                 if (pressed) {
                                                     push_o(ev, button.set());
                                                 } else if (released) {
