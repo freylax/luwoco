@@ -12,6 +12,7 @@ const IO = @import("IO.zig");
 
 const Item = Tree.Item;
 const values = @import("tui/values.zig");
+const uib = @import("ui_buttons.zig");
 const IntValue = values.IntValue;
 const RefPushButton = values.RefPushButton;
 const BulbValue = values.BulbValue;
@@ -63,18 +64,13 @@ const Event = struct {
 
 const BS = TUI.ButtonSemantics;
 
-const button1: u8 = 0b0001;
-const button2: u8 = 0b0010;
-const button3: u8 = 0b0100;
-const button4: u8 = 0b1000;
-
 const button_masks = blk: {
     const l = TUI.ButtonSemanticsLen;
     var a = [_]u8{0} ** l;
-    a[@intFromEnum(BS.escape)] = button1;
-    a[@intFromEnum(BS.left)] = button2;
-    a[@intFromEnum(BS.right)] = button3;
-    a[@intFromEnum(BS.activate)] = button4;
+    a[@intFromEnum(BS.escape)] = uib.button1;
+    a[@intFromEnum(BS.left)] = uib.button2;
+    a[@intFromEnum(BS.right)] = uib.button3;
+    a[@intFromEnum(BS.activate)] = uib.button4;
     break :blk a;
 };
 
@@ -123,6 +119,7 @@ var pb_relais_b = RefPushButton(Relais.State){
 };
 
 var drive_x_ui = DriveControlUI.create(&IO.drive_x_control);
+var drive_y_ui = DriveControlUI.create(&IO.drive_y_control);
 
 const items: []const Item = &.{
     .{ .popup = .{
@@ -141,9 +138,9 @@ const items: []const Item = &.{
                 .items = &.{
                     .{ .label = "    " },
                     .{ .label = " X+" },
-                    .{ .value = pb_dx_dir_a.value(.{ .db = button3 }) },
+                    .{ .value = pb_dx_dir_a.value(.{ .db = uib.button3 }) },
                     .{ .label = " X-" },
-                    .{ .value = pb_dx_dir_b.value(.{ .db = button4 }) },
+                    .{ .value = pb_dx_dir_b.value(.{ .db = uib.button4 }) },
                 },
             } },
             .{ .popup = .{
@@ -151,9 +148,9 @@ const items: []const Item = &.{
                 .items = &.{
                     .{ .label = "    " },
                     .{ .label = " y+" },
-                    .{ .value = pb_dy_dir_a.value(.{ .db = button3 }) },
+                    .{ .value = pb_dy_dir_a.value(.{ .db = uib.button3 }) },
                     .{ .label = " y-" },
-                    .{ .value = pb_dy_dir_b.value(.{ .db = button4 }) },
+                    .{ .value = pb_dy_dir_b.value(.{ .db = uib.button4 }) },
                 },
             } },
             .{ .popup = .{
@@ -161,9 +158,9 @@ const items: []const Item = &.{
                 .items = &.{
                     .{ .label = "    " },
                     .{ .label = " A " },
-                    .{ .value = pb_relais_a.value(.{ .db = button3 }) },
+                    .{ .value = pb_relais_a.value(.{ .db = uib.button3 }) },
                     .{ .label = " B " },
-                    .{ .value = pb_relais_b.value(.{ .db = button4 }) },
+                    .{ .value = pb_relais_b.value(.{ .db = uib.button4 }) },
                 },
             } },
         },
@@ -171,19 +168,11 @@ const items: []const Item = &.{
     .{ .popup = .{ .str = " control test\n", .items = &.{
         .{ .popup = .{
             .str = " drive x\n",
-            .items = &.{
-                .{ .label = "pos:" },
-                .{ .value = drive_x_ui.lastPos.value() },
-                .{ .label = " =>" },
-                .{ .value = drive_x_ui.targetPos.value() },
-                .{ .label = "\n" },
-                .{ .label = "#" },
-                .{ .value = drive_x_ui.stopBt.value(.{ .db = button2 }) },
-                .{ .label = " +" },
-                .{ .value = drive_x_ui.fwBt.value(.{ .db = button3 }) },
-                .{ .label = " -" },
-                .{ .value = drive_x_ui.bwBt.value(.{ .db = button4 }) },
-            },
+            .items = drive_x_ui.ui(),
+        } },
+        .{ .popup = .{
+            .str = " drive y\n",
+            .items = drive_y_ui.ui(),
         } },
     } } },
     .{ .popup = .{

@@ -568,6 +568,15 @@ pub fn Impl(comptime tree: Tree, button_masks_: []const u8) type {
                                         if (m == esc_m) {
                                             esc_enabled = false;
                                         }
+                                    } else {
+                                        switch (button.behavior) {
+                                            .one_click => {
+                                                if (released) {
+                                                    push_o(ev, button.reset());
+                                                }
+                                            },
+                                            else => {},
+                                        }
                                     }
                                 },
                                 else => {},

@@ -1,4 +1,5 @@
 const std = @import("std");
+const assert = std.debug.assert;
 const Value = @import("items.zig").Value;
 const Event = @import("Event.zig");
 
@@ -17,6 +18,39 @@ pub const StrValue = struct {
         return self.str;
     }
 };
+
+// the enum indexes into the provided array of strings
+pub fn EnumRefValue(T: type, map: anytype) type {
+    assert(@typeInfo(T) == .@"enum");
+    // assert(@typeInfo(@TypeOf(map)) == .array);
+    const en = @typeInfo(T).@"enum".fields;
+    assert(en.len == map.len);
+    // find the longest string
+    const max = blk: {
+        var n = 0;
+        for (map) |m| {
+            n = @max(m.len, n);
+        }
+        break :blk n;
+    };
+    return struct {
+        const Self = @This();
+        ref: *T,
+
+        pub fn value(self: *Self) Value {
+            return .{ .ro = .{
+                .size = max,
+                .ptr = self,
+                .vtable = &.{ .get = get },
+            } };
+        }
+
+        fn get(ctx: *anyopaque) []const u8 {
+            const self: *Self = @ptrCast(@alignCast(ctx));
+            return map[@intFromEnum(self.ref.*)];
+        }
+    };
+}
 
 pub const BulbValue = struct {
     val: bool = false,

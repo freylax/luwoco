@@ -6,7 +6,7 @@ const SampleButton = @import("SampleButton.zig");
 
 const Self = @This();
 
-const State = enum {
+pub const State = enum {
     idle,
     stoped,
     stoped_by_min,
