@@ -16,6 +16,7 @@ const uib = @import("ui_buttons.zig");
 const IntValue = values.IntValue;
 const RefPushButton = values.RefPushButton;
 const BulbValue = values.BulbValue;
+const FlashJournal = @import("FlashJournal.zig");
 
 const rp2xxx = microzig.hal;
 const interrupt = microzig.cpu.interrupt;
@@ -371,4 +372,7 @@ pub fn main() !void {
         // gpio.num(25).put(0);
         // time.sleep_ms(900);
     }
+}
+test {
+    _ = FlashJournal;
 }
