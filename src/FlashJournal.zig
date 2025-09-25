@@ -2,7 +2,6 @@ const std = @import("std");
 const mem = std.mem;
 const assert = std.debug.assert;
 const testing = std.testing;
-const log = std.log;
 
 const magic_bytes = "fj";
 
@@ -111,7 +110,6 @@ pub fn create(
         }
 
         pub fn write(self: *Self, data: []const u8) void {
-            log.info("journal.write A", .{});
             if (self.ptr == storage) {
                 // first write without a former read,
                 // read the chronological data first
@@ -122,7 +120,6 @@ pub fn create(
                 self.read_page();
                 self.first_write = false;
             }
-            log.info("journal.write B", .{});
             // this loop is for the case we reach the end and have to write out
             // data from begining
             for (0..2) |_| {
@@ -164,15 +161,12 @@ pub fn create(
                     self.writeAsBytes(&skip);
                 }
 
-                log.info("journal.write C", .{});
                 // now write the end, this is the next size entry as zero
                 self.writeAsBytes(&(@as(DLT, 0)));
                 if (self.page_idx < pages and self.page_offset > 0) {
-                    log.info("journal.write D", .{});
                     write_page(self.page_idx, &self.page);
                 }
                 if (self.page_idx == pages) {
-                    log.info("journal.write E", .{});
                     // we are full
                     // make a new start and write out the data
                     self.ptr = storage;
@@ -181,7 +175,6 @@ pub fn create(
                     self.read_page();
                     // the for loop will do the write
                 } else {
-                    log.info("journal.write F", .{});
                     // we are not full
                     // step back so the pointers point to the new size (which is zero)
                     const step_back = @sizeOf(DLT);
@@ -199,7 +192,6 @@ pub fn create(
                     break; // leave the loop
                 }
             }
-            log.info("journal.write G", .{});
             mem.copyForwards(u8, &self.data, data);
         }
     };
