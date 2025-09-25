@@ -15,7 +15,10 @@ const values = @import("tui/values.zig");
 const uib = @import("ui_buttons.zig");
 const IntValue = values.IntValue;
 const RefPushButton = values.RefPushButton;
+const PushButton = values.PushButton;
+const ClickButton = values.ClickButton;
 const BulbValue = values.BulbValue;
+const Config = @import("Config.zig");
 const FlashJournal = @import("FlashJournal.zig");
 
 const rp2xxx = microzig.hal;
@@ -41,8 +44,9 @@ pub const microzig_options = microzig.Options{
 };
 
 const EventId = enum(u16) {
-    Setup,
-    BackLight,
+    config,
+    back_light,
+    save_config,
     drive_x,
     drive_y,
     relais_a,
@@ -54,12 +58,14 @@ const EventId = enum(u16) {
 
 const EventTag = enum {
     tui,
+    cfg,
 };
 
 const Event = struct {
     id: EventId,
     pl: union(EventTag) {
         tui: TUI.Event.PayLoad,
+        cfg: void,
     },
 };
 
@@ -75,7 +81,21 @@ const button_masks = blk: {
     break :blk a;
 };
 
-var back_light = IntValue{ .min = 0, .max = 255, .val = 0, .id = EventId.BackLight.id() };
+var config = Config{};
+
+var back_light = IntValue{ .min = 0, .max = 255, .val = 0, .id = EventId.back_light.id() };
+var pb_save_config = PushButton{ .id = EventId.save_config.id() };
+
+fn applyConfig() []Event {
+    var events: [1]Event = undefined;
+    var idx: usize = 0;
+    if (config.back_ground_light != back_light.val) {
+        back_light.val = config.back_ground_light;
+        events[idx] = .{ .id = .back_light, .pl = .cfg };
+        idx += 1;
+    }
+    return events[0..idx];
+}
 
 var drive_x_state: Drive.State = .off;
 var pb_dx_dir_a = RefPushButton(Drive.State){
@@ -124,11 +144,13 @@ var drive_y_ui = DriveControlUI.create(&IO.drive_y_control);
 
 const items: []const Item = &.{
     .{ .popup = .{
-        .id = EventId.Setup.id(),
-        .str = " Setup\n",
+        .id = EventId.config.id(),
+        .str = " Config\n",
         .items = &.{
-            .{ .label = "Backlight:" },
+            .{ .label = " Backlight:" },
             .{ .value = back_light.value() },
+            .{ .label = "\n Save Config:" },
+            .{ .value = pb_save_config.value(.{}) },
         },
     } },
     .{ .popup = .{
@@ -265,7 +287,7 @@ const items: []const Item = &.{
 //     set_alarm(1_000_000);
 // }
 
-pub fn switch_handler() callconv(.C) void {
+pub fn switch_handler() callconv(.c) void {
     // disable interrupts
     const cs = microzig.interrupt.enter_critical_section();
     defer cs.leave(); // enable interrupts
@@ -297,7 +319,7 @@ pub fn main() !void {
     rp2xxx.uart.init_logger(IO.uart0);
 
     std.log.info("setup lcd", .{});
-    var lcd = LCD.init(IO.i2c_device.datagram_device());
+    var lcd = LCD.init(IO.i2c_device.i2c_device(), @enumFromInt(0x30));
     var display = lcd.display();
     var buttons = lcd.buttons();
     var tuiImpl = TuiImpl.init(display);
@@ -305,6 +327,9 @@ pub fn main() !void {
     time.sleep_ms(100);
 
     try IO.begin();
+
+    config.read();
+    var cfg_events = applyConfig();
 
     // we need some time after boot for i2c to become ready, otherwise
     // unsupported will be thrown
@@ -314,41 +339,69 @@ pub fn main() !void {
     while (true) {
         var events: [8]Event = undefined;
         var ev_idx: u8 = 0;
+        while (cfg_events.len > 0 and ev_idx < events.len) {
+            events[ev_idx] = cfg_events[0];
+            cfg_events = cfg_events[1..];
+        }
         tui.writeValues();
         if (tui.print()) {} else |_| {}
         time.sleep_ms(100);
         const read_buttons = buttons.read();
         if (read_buttons) |b| {
             for (tui.buttonEvent(b)) |ev| {
-                events[ev_idx] = .{ .id = @enumFromInt(ev.id), .pl = .{ .tui = ev.pl } };
-                ev_idx += 1;
+                if (ev_idx < events.len) {
+                    events[ev_idx] = .{ .id = @enumFromInt(ev.id), .pl = .{ .tui = ev.pl } };
+                    ev_idx += 1;
+                }
             }
         } else |_| {}
         if (lcd.lastError) |e| {
             switch (e) {
-                error.IoError => log.err("IoError", .{}),
+                error.DeviceNotPresent => log.err("DeviceNotPresent", .{}),
+                error.NoAcknowledge => log.err("NoAcknowledge", .{}),
                 error.Timeout => log.err("Timeout", .{}),
-                error.DeviceBusy => log.err("DeviceBusy", .{}),
-                error.Unsupported => log.err("Unsupported", .{}),
-                error.NotConnected => log.err("NotConnected", .{}),
+                error.TargetAddressReserved => log.err("TargetAddressReserved", .{}),
+                error.NoData => log.err("NoData", .{}),
                 error.BufferOverrun => log.err("BufferOverrun", .{}),
+                error.UnknownAbort => log.err("UnknownAbort", .{}),
+                error.IllegalAddress => log.err("IllegalAddress", .{}),
+                error.Unsupported => log.err("Unsupported", .{}),
             }
             lcd.lastError = null;
         }
         for (events[0..ev_idx]) |ev| {
             switch (ev.id) {
-                .Setup => {
+                .config => {
                     switch (ev.pl.tui.section) {
                         .enter => {
-                            log.info("Enter Setup Event", .{});
+                            log.info("Enter Config Menu", .{});
                         },
                         .leave => {
-                            log.info("Leave Setup Event", .{});
+                            log.info("Leave Config Menu", .{});
                         },
                     }
                 },
-                .BackLight => {
-                    _ = lcd.setBackLight(ev.pl.tui.value);
+                .back_light => {
+                    _ = lcd.setBackLight(back_light.val);
+                    switch (ev.pl) {
+                        .tui => {
+                            config.back_ground_light = back_light.val;
+                        },
+                        else => {},
+                    }
+                },
+                .save_config => {
+                    switch (ev.pl.tui.button) {
+                        true => {
+                            log.info("config true", .{});
+                            config.write();
+                            time.sleep_ms(100);
+                            log.info("config done", .{});
+                        },
+                        false => {
+                            log.info("config false", .{});
+                        },
+                    }
                 },
                 .drive_x => {
                     try IO.drive_x.set(drive_x_state);

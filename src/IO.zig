@@ -57,7 +57,7 @@ pub const uart0 = rp2xxx.uart.instance.num(0);
 const baud_rate = 115200;
 pub const i2c0 = rp2xxx.i2c.instance.num(0);
 
-pub var i2c_device = I2C_Device.init(i2c0, @enumFromInt(0x30), null);
+pub var i2c_device = I2C_Device.init(i2c0, null);
 pub var pos_x_pos = SampleButton{ .pin = iod.pos_x_pos.digital_io(), .active = .low };
 pub var pos_x_min = SampleButton{ .pin = iod.pos_x_min.digital_io(), .active = .low };
 pub var pos_x_max = SampleButton{ .pin = iod.pos_x_max.digital_io(), .active = .low };
@@ -114,7 +114,7 @@ pub fn init() !void {
         .baud_rate = baud_rate,
         .clock_config = rp2xxx.clock_config,
     });
-    try i2c0.apply(.{ .clock_config = rp2xxx.clock_config });
+    i2c0.apply(.{ .clock_config = rp2xxx.clock_config });
 }
 
 pub fn begin() !void {

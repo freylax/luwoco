@@ -276,7 +276,7 @@ pub fn Impl(comptime tree: Tree, button_masks_: []const u8) type {
                         .value => {
                             const val = self.values[item.ptr].value;
                             switch (val) {
-                                .rw => {
+                                .rw, .button => {
                                     c_val += 1;
                                 },
                                 else => {},

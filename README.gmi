@@ -92,3 +92,12 @@ Input Pin  --+--R2  --+
 
 			    							
 ```
+Flash Size
+
+2 MB
+2097152 Bytes = 0x200_000 
+
+Page Size   =     256 =     0x100    
+Sector Size =    4096 =   0x1_000  1KB
+Block Size  =   65536 =  0x10_000 
+1 MB        = 1048576 = 0x100_000  1MB

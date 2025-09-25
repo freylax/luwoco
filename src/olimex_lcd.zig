@@ -2,7 +2,7 @@ const std = @import("std");
 const microzig = @import("microzig");
 const hal = microzig.hal;
 const time = hal.time;
-const Datagram_Device = microzig.drivers.base.Datagram_Device;
+const I2C_Device = microzig.drivers.base.I2C_Device;
 const Mutex = hal.mutex.Mutex;
 const assert = std.debug.assert;
 const Display = @import("tui/Display.zig");
@@ -20,7 +20,8 @@ pub fn BufferedLCD(comptime NrOfLines: comptime_int) type {
     return struct {
         const Self = @This();
         const nLines = NrOfLines;
-        dd: Datagram_Device,
+        dev: I2C_Device,
+        addr: I2C_Device.Address,
         mx: Mutex,
         buf: [nLines]Line = [_]Line{Line{}} ** nLines, // buffer for writing, protected by mx
         dBuf: [2][Line.len]u8 = .{.{' '} ** Line.len} ** 2, // the actual displayed chars
@@ -53,9 +54,10 @@ pub fn BufferedLCD(comptime NrOfLines: comptime_int) type {
             };
         }
 
-        pub fn init(dd: Datagram_Device) Self {
+        pub fn init(dev: I2C_Device, addr: I2C_Device.Address) Self {
             return Self{
-                .dd = dd,
+                .dev = dev,
+                .addr = addr,
                 .mx = Mutex{},
             };
         }
@@ -152,9 +154,7 @@ pub fn BufferedLCD(comptime NrOfLines: comptime_int) type {
                 self.cursorOn = false;
             }
         }
-        const WriteError = Datagram_Device.ConnectError || Datagram_Device.WriteError;
-        const ReadError = Datagram_Device.ConnectError || Datagram_Device.ReadError;
-        const Error = WriteError || ReadError;
+        const Error = I2C_Device.InterfaceError;
         pub fn print(ctx: *anyopaque, lines: []const u16) ?void {
             const self: *Self = @ptrCast(@alignCast(ctx));
             // insert the chars to print/update, all other are zero
@@ -221,16 +221,12 @@ pub fn BufferedLCD(comptime NrOfLines: comptime_int) type {
         }
 
         /// Sends command data to the lcd
-        fn write_datagram(self: Self, cmd: u8, argv: []const u8) WriteError!void {
-            try self.dd.connect();
-            defer self.dd.disconnect();
-            try self.dd.writev(&.{ &.{cmd}, argv });
+        fn write_datagram(self: Self, cmd: u8, argv: []const u8) Error!void {
+            try self.dev.writev(self.addr, &.{ &.{cmd}, argv });
         }
-        fn read_datagram(self: Self, cmd: u8, argv: []u8) ReadError!usize {
-            try self.dd.connect();
-            defer self.dd.disconnect();
-            try self.dd.writev(&.{&.{cmd}});
-            return try self.dd.read(argv);
+        fn read_datagram(self: Self, cmd: u8, argv: []u8) Error!usize {
+            try self.dev.writev(self.addr, &.{&.{cmd}});
+            return try self.dev.read(self.addr, argv);
         }
     };
 }

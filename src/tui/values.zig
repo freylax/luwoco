@@ -91,7 +91,7 @@ pub const IntValue = struct {
     }
     fn get(ctx: *anyopaque) []const u8 {
         const self: *IntValue = @ptrCast(@alignCast(ctx));
-        _ = std.fmt.formatIntBuf(&self.buf, self.val, 10, .lower, .{ .alignment = .right, .width = 4 });
+        _ = std.fmt.printInt(&self.buf, self.val, 10, .lower, .{ .alignment = .right, .width = 4 });
         return &self.buf;
     }
     fn event(self: *IntValue) ?Event {
@@ -138,7 +138,7 @@ pub fn RoRefIntValue(comptime T: type, comptime size: u8, comptime base: u8) typ
         }
         fn get(ctx: *anyopaque) []const u8 {
             const self: *Self = @ptrCast(@alignCast(ctx));
-            _ = std.fmt.formatIntBuf(&self.buf, self.ref.*, base, .lower, .{ .alignment = .right, .width = size });
+            _ = std.fmt.printInt(&self.buf, self.ref.*, base, .lower, .{ .alignment = .right, .width = size });
             return &self.buf;
         }
     };

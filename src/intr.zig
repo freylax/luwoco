@@ -3,7 +3,7 @@ const hal = microzig.hal;
 const chip = microzig.chip;
 
 // I don't actually know if this needs to be callconv C
-pub fn gpio_handler() callconv(.C) void {
+pub fn gpio_handler() callconv(.c) void {
     // Acknowledge/clear the interrupt. With an edge-triggered interrupt,
     //  when missing the acknowledge, the interrupt triggers repeatedly forever
     // We're "listening" for falling-edge events on pin 18
