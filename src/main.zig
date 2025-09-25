@@ -86,15 +86,15 @@ var config = Config{};
 var back_light = IntValue{ .min = 0, .max = 255, .val = 0, .id = EventId.back_light.id() };
 var pb_save_config = PushButton{ .id = EventId.save_config.id() };
 
+var config_events: [1]Event = undefined;
 fn applyConfig() []Event {
-    var events: [1]Event = undefined;
     var idx: usize = 0;
     if (config.back_ground_light != back_light.val) {
         back_light.val = config.back_ground_light;
-        events[idx] = .{ .id = .back_light, .pl = .cfg };
+        config_events[idx] = .{ .id = .back_light, .pl = .cfg };
         idx += 1;
     }
-    return events[0..idx];
+    return config_events[0..idx];
 }
 
 var drive_x_state: Drive.State = .off;
@@ -342,6 +342,7 @@ pub fn main() !void {
         while (cfg_events.len > 0 and ev_idx < events.len) {
             events[ev_idx] = cfg_events[0];
             cfg_events = cfg_events[1..];
+            ev_idx += 1;
         }
         tui.writeValues();
         if (tui.print()) {} else |_| {}
@@ -369,7 +370,8 @@ pub fn main() !void {
             }
             lcd.lastError = null;
         }
-        for (events[0..ev_idx]) |ev| {
+        for (events[0..ev_idx], 0..) |ev, ev_i| {
+            log.info("process event ({d}/{d})", .{ ev_i, ev_idx });
             switch (ev.id) {
                 .config => {
                     switch (ev.pl.tui.section) {
@@ -382,13 +384,17 @@ pub fn main() !void {
                     }
                 },
                 .back_light => {
-                    _ = lcd.setBackLight(back_light.val);
+                    log.info("back_light event", .{});
                     switch (ev.pl) {
                         .tui => {
                             config.back_ground_light = back_light.val;
                         },
-                        else => {},
+                        .cfg => {
+                            log.info("back_light cfg", .{});
+                            back_light.val = config.back_ground_light;
+                        },
                     }
+                    _ = lcd.setBackLight(back_light.val);
                 },
                 .save_config => {
                     switch (ev.pl.tui.button) {
