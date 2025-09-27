@@ -46,7 +46,7 @@ pub const microzig_options = microzig.Options{
 const EventId = enum(u16) {
     config,
     back_light,
-    save_config,
+    // save_config,
     drive_x,
     drive_y,
     relais_a,
@@ -84,7 +84,12 @@ const button_masks = blk: {
 var config = Config{};
 
 var back_light = IntValue{ .min = 0, .max = 255, .val = 0, .id = EventId.back_light.id() };
-var pb_save_config = PushButton{ .id = EventId.save_config.id() };
+var pb_save_config = ClickButton(Config){
+    .ref = &config,
+    .enabled = Config.data_differ,
+    .clicked = Config.write,
+    // .id = EventId.save_config.id(),
+};
 
 var config_events: [1]Event = undefined;
 fn applyConfig() []Event {
@@ -147,9 +152,9 @@ const items: []const Item = &.{
         .id = EventId.config.id(),
         .str = " Config\n",
         .items = &.{
-            .{ .label = " Backlight:" },
+            .{ .label = "Backlight:" },
             .{ .value = back_light.value() },
-            .{ .label = "\n Save Config:" },
+            .{ .label = "\nSave: " },
             .{ .value = pb_save_config.value(.{}) },
         },
     } },
@@ -396,19 +401,19 @@ pub fn main() !void {
                     }
                     _ = lcd.setBackLight(back_light.val);
                 },
-                .save_config => {
-                    switch (ev.pl.tui.button) {
-                        true => {
-                            log.info("config true", .{});
-                            config.write();
-                            time.sleep_ms(100);
-                            log.info("config done", .{});
-                        },
-                        false => {
-                            log.info("config false", .{});
-                        },
-                    }
-                },
+                // .save_config => {
+                //     switch (ev.pl.tui.button) {
+                //         true => {
+                //             log.info("config true", .{});
+                //             config.write();
+                //             time.sleep_ms(100);
+                //             log.info("config done", .{});
+                //         },
+                //         false => {
+                //             log.info("config false", .{});
+                //         },
+                //     }
+                // },
                 .drive_x => {
                     try IO.drive_x.set(drive_x_state);
                 },

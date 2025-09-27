@@ -30,7 +30,6 @@ fn write_page(page_idx: usize, page: []const u8) void {
 
 var journal = FlashJournal.create(
     u8,
-    my_size,
     max_size,
     page_size,
     pages,
@@ -44,4 +43,8 @@ pub fn read(self: *Self) void {
 
 pub fn write(self: *Self) void {
     journal.write(mem.asBytes(self));
+}
+
+pub fn data_differ(self: *Self) bool {
+    return !mem.eql(u8, journal.data[0..my_size], mem.asBytes(self));
 }

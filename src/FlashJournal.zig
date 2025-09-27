@@ -15,7 +15,6 @@ fn readBytesAs(comptime T: type, ptr: *Ptr) T {
 
 pub fn create(
     comptime data_len_type: type, // u8 minimal, this has to be fixed for the usage of the flash
-    comptime data_size: data_len_type,
     comptime max_data_size: data_len_type, // the maximal size of data in history
     comptime page_size: usize,
     comptime pages: usize,
@@ -130,8 +129,8 @@ pub fn create(
 
                 var begin: DLT = 0;
                 var skip: DLT = 0;
-                // write the data_size
-                self.writeAsBytes(&data_size);
+                // write the len of data
+                self.writeAsBytes(&@as(DLT, @intCast(data.len)));
                 for (0..data.len) |i_| {
                     const i = @as(DLT, @intCast(i_));
                     if (data[i] == self.data[i]) {
@@ -143,7 +142,6 @@ pub fn create(
                         }
                         skip += 1;
                     } else {
-
                         // data are not equal
                         if (skip > 0 or i == 0) {
                             // we change from a skipped range to unskipped one
@@ -235,7 +233,7 @@ test {
     const data_3 = "abcDEF";
     const data_4 = "ABCDEF";
     {
-        var fj = comptime create(u8, data_0.len, data_0.len, page_size, pages, storage.get(), storage.write_page){};
+        var fj = comptime create(u8, data_0.len, page_size, pages, storage.get(), storage.write_page){};
         fj.write(data_0);
         try testing.expectEqualSlices(
             u8,
@@ -245,7 +243,7 @@ test {
         try testing.expectEqualSlices(u8, data_0, fj.read());
     }
     {
-        var fj = comptime create(u8, data_0.len, data_1.len, page_size, pages, storage.get(), storage.write_page){};
+        var fj = comptime create(u8, data_0.len, page_size, pages, storage.get(), storage.write_page){};
         try testing.expectEqualSlices(u8, data_0, fj.read());
         fj.write(data_1);
         try testing.expectEqualSlices(
@@ -255,7 +253,7 @@ test {
         );
     }
     {
-        var fj = comptime create(u8, data_2.len, data_2.len, page_size, pages, storage.get(), storage.write_page){};
+        var fj = comptime create(u8, data_2.len, page_size, pages, storage.get(), storage.write_page){};
         try testing.expectEqualSlices(u8, data_1b, fj.read());
         fj.write(data_2);
         try testing.expectEqualSlices(
@@ -265,7 +263,7 @@ test {
         );
     }
     {
-        var fj = comptime create(u8, data_2.len, data_3.len, page_size, pages, storage.get(), storage.write_page){};
+        var fj = comptime create(u8, data_2.len, page_size, pages, storage.get(), storage.write_page){};
         try testing.expectEqualSlices(u8, data_2, fj.read());
         fj.write(data_3);
         try testing.expectEqualSlices(
