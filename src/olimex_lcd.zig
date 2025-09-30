@@ -74,7 +74,7 @@ pub fn BufferedLCD(comptime NrOfLines: comptime_int) type {
                 if (c == '\n' or p >= Line.len) {
                     p = 0;
                     if (modified) {
-                        self.buf[l].stamp_in += 1;
+                        self.buf[l].stamp_in +%= 1;
                         modified = false;
                     }
                     l += 1;
@@ -90,7 +90,7 @@ pub fn BufferedLCD(comptime NrOfLines: comptime_int) type {
                 p += 1;
             }
             if (modified) {
-                self.buf[l].stamp_in += 1;
+                self.buf[l].stamp_in +%= 1;
             }
         }
         pub fn cursorOff(ctx: *anyopaque) void {
@@ -100,7 +100,7 @@ pub fn BufferedLCD(comptime NrOfLines: comptime_int) type {
             if (self.cursorOn) {
                 // restore the buffer
                 self.buf[self.cursorLine].buf[self.cursorCol] = self.cursorSavedChar;
-                self.buf[self.cursorLine].stamp_in += 1;
+                self.buf[self.cursorLine].stamp_in +%= 1;
             }
             self.cursorOn = false;
         }
@@ -114,7 +114,7 @@ pub fn BufferedLCD(comptime NrOfLines: comptime_int) type {
                 // std.log.info("restore cursor at {d},{d} to char '{c}'", .{ self.cursorLine, self.cursorCol, self.cursorSavedChar });
                 // restore the buffer of the current cursor position
                 self.buf[self.cursorLine].buf[self.cursorCol] = self.cursorSavedChar;
-                self.buf[self.cursorLine].stamp_in += 1;
+                self.buf[self.cursorLine].stamp_in +%= 1;
             }
 
             if (bLine < nLines and bCol < Line.len) {
@@ -146,7 +146,7 @@ pub fn BufferedLCD(comptime NrOfLines: comptime_int) type {
                     self.cursorSavedChar = self.buf[self.cursorLine].buf[self.cursorCol];
                     self.buf[self.cursorLine].buf[self.cursorCol] = cursorChar;
                     // if (fw) '}' + 1 else '}' + 2;
-                    self.buf[self.cursorLine].stamp_in += 1;
+                    self.buf[self.cursorLine].stamp_in +%= 1;
                     // std.log.info("set lcd cursor at {d},{d},{d},'{c}'", .{ self.cursorLine, self.cursorCol, self.buf[self.cursorLine].stamp_in, self.buf[self.cursorLine].buf[self.cursorCol] });
                     // std.log.info("set lcd cursor buf {s}", .{&self.buf[self.cursorLine].buf});
                 }
