@@ -15,8 +15,8 @@ const Self = @This();
 
 const pin_config = rp2xxx.pins.GlobalConfiguration{
     .GPIO0 = .{ .name = "gpio0", .function = .UART0_TX },
-    .GPIO4 = .{ .name = "sda", .function = .I2C0_SDA, .slew_rate = .slow },
-    .GPIO5 = .{ .name = "scl", .function = .I2C0_SCL, .slew_rate = .slow },
+    .GPIO4 = .{ .name = "sda", .function = .I2C0_SDA, .slew_rate = .slow, .schmitt_trigger = .enabled },
+    .GPIO5 = .{ .name = "scl", .function = .I2C0_SCL, .slew_rate = .slow, .schmitt_trigger = .enabled },
     .GPIO8 = .{ .name = "drive_x_enable", .direction = .out },
     .GPIO9 = .{ .name = "drive_x_dir_a", .direction = .out },
     .GPIO10 = .{ .name = "drive_x_dir_b", .direction = .out },
