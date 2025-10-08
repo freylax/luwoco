@@ -13,14 +13,21 @@ const Self = @This();
 
 const ClickBt = ClickButton(DriveControl);
 const Int = RoRefIntValue(i8, 3, 10);
-const State = EnumRefValue(DriveControl.State, [_][]const u8{ "idle", "stop", "min ", "max ", "go  " });
+const State = EnumRefValue(DriveControl.State, [_][]const u8{ "stp", "lim", "mov" });
+const Dir = EnumRefValue(DriveControl.Direction, [_][]const u8{ "un", "fw", "bw" });
+const Dev = EnumRefValue(DriveControl.Deviation, [_][]const u8{ "ex", "sm", "co" });
 
+stopBt: ClickBt,
 fwBt: ClickBt,
 bwBt: ClickBt,
-stopBt: ClickBt,
-lastPos: Int,
-targetPos: Int,
+origBt: ClickBt,
+
+pos_coord: Int,
+pos_dir: Dir,
+pos_dev: Dev,
+target_coord: Int,
 state: State,
+dir: Dir,
 
 pub fn create(dc: *DriveControl) Self {
     return .{
@@ -39,32 +46,46 @@ pub fn create(dc: *DriveControl) Self {
             .enabled = stopEnabled,
             .clicked = stopClicked,
         },
-        .lastPos = .{ .ref = &dc.last_pos },
-        .targetPos = .{ .ref = &dc.target_pos },
+        .origBt = .{
+            .ref = dc,
+            .enabled = origEnabled,
+            .clicked = origClicked,
+        },
+        .pos_coord = .{ .ref = &dc.pos.coord },
+        .pos_dir = .{ .ref = &dc.pos.dir },
+        .pos_dev = .{ .ref = &dc.pos.dev },
+        .target_coord = .{ .ref = &dc.target_coord },
         .state = .{ .ref = &dc.state },
+        .dir = .{ .ref = &dc.dir },
     };
 }
 
 pub fn ui(self: *Self) []const Item {
     return &.{
-        .{ .value = self.state.value() },
-        .{ .label = "  " },
-        .{ .value = self.lastPos.value() },
-        .{ .label = " =>" },
-        .{ .value = self.targetPos.value() },
+        .{ .value = self.state.value() }, // 3
+        .{ .value = self.dir.value() }, // 2
+        // .{ .label = "  " },
+        .{ .value = self.pos_coord.value() }, // 3
+        .{ .value = self.pos_dir.value() }, // 2
+        .{ .value = self.pos_dev.value() }, // 2
+        // .{ .label = " =>" },
+        .{ .value = self.target_coord.value() }, // 3
         .{ .label = "\n" },
         .{ .label = "#" },
-        .{ .value = self.stopBt.value(.{ .db = uib.button2 }) },
-        .{ .label = " +" },
-        .{ .value = self.fwBt.value(.{ .db = uib.button3 }) },
-        .{ .label = " -" },
-        .{ .value = self.bwBt.value(.{ .db = uib.button4 }) },
+        .{ .value = self.stopBt.value(.{ .db = uib.button1 }) },
+        .{ .label = "+" },
+        .{ .value = self.fwBt.value(.{ .db = uib.button2 }) },
+        .{ .label = "-" },
+        .{ .value = self.bwBt.value(.{ .db = uib.button3 }) },
+        .{ .label = "o" },
+        .{ .value = self.origBt.value(.{ .db = uib.button4 }) },
     };
 }
 
 fn stepForwardEnabled(dc: *DriveControl) bool {
     return switch (dc.state) {
-        .idle, .stoped, .stoped_by_min => true,
+        .stoped => true,
+        .limited => (dc.pos.dir == .backward),
         else => false,
     };
 }
@@ -75,7 +96,8 @@ fn stepForwardClicked(dc: *DriveControl) void {
 
 fn stepBackwardEnabled(dc: *DriveControl) bool {
     return switch (dc.state) {
-        .idle, .stoped, .stoped_by_max => true,
+        .stoped => true,
+        .limited => (dc.pos.dir == .forward),
         else => false,
     };
 }
@@ -86,11 +108,22 @@ fn stepBackwardClicked(dc: *DriveControl) void {
 
 fn stopEnabled(dc: *DriveControl) bool {
     return switch (dc.state) {
-        .driving => true,
+        .moving => true,
         else => false,
     };
 }
 
 fn stopClicked(dc: *DriveControl) void {
     dc.stop() catch {};
+}
+
+fn origEnabled(dc: *DriveControl) bool {
+    return switch (dc.state) {
+        .stoped => true,
+        else => false,
+    };
+}
+
+fn origClicked(dc: *DriveControl) void {
+    dc.setOrigin();
 }

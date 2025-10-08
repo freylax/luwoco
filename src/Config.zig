@@ -19,6 +19,10 @@ const flash_target_offset = 0x20_0000 - pages * page_size; // 2 MB Flash
 const flash_target_contents = @as([*]const u8, @ptrFromInt(flash.XIP_BASE + flash_target_offset));
 
 back_ground_light: u8 = 0,
+// min_x: i8 = -5,
+// max_x: i8 = 5,
+// min_y: i8 = -3,
+// max_y: i8 = 3,
 
 fn write_page(page_idx: usize, page: []const u8) void {
     comptime assert(max_size >= my_size);
