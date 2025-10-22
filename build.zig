@@ -39,6 +39,15 @@ pub fn build(b: *std.Build) void {
     mb.install_firmware(intr, .{});
     mb.install_firmware(intr, .{ .format = .elf });
 
+    // const flash = mb.add_firmware(.{
+    //     .name = "flash",
+    //     .target = mb.ports.rp2xxx.boards.raspberrypi.pico,
+    //     .optimize = optimize,
+    //     .root_source_file = b.path("src/read_flash.zig"),
+    // });
+    // mb.install_firmware(flash, .{});
+    // mb.install_firmware(flash, .{ .format = .elf });
+
     // Creates a step for unit testing. This only builds the test executable
     // but does not run it.
     const target = b.standardTargetOptions(.{});
@@ -55,10 +64,12 @@ pub fn build(b: *std.Build) void {
     });
 
     const run_main_tests = b.addRunArtifact(main_tests);
-
+    // b.installArtifact(main_tests);
     // This creates a build step. It will be visible in the `zig build --help` menu,
     // and can be selected like this: `zig build test`
     // This will evaluate the `test` step rather than the default, which is "install".
     const test_step = b.step("test", "Run library tests");
     test_step.dependOn(&run_main_tests.step);
+    const install_tests_bin = b.addInstallArtifact(main_tests, .{});
+    b.step("install-tests", "Install tests to zig-out/bin").dependOn(&install_tests_bin.step);
 }

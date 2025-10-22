@@ -96,7 +96,7 @@ pub const IntValue = struct {
     }
     fn event(self: *IntValue) ?Event {
         if (self.id) |id| {
-            return .{ .id = id, .pl = .{ .value = self.val } };
+            return .{ .id = id, .pl = .value };
         } else {
             return null;
         }
@@ -121,6 +121,57 @@ pub const IntValue = struct {
         return self.event();
     }
 };
+
+pub fn RefIntValue(comptime T: type, comptime size: u8, comptime base: u8) type {
+    return struct {
+        const Self = @This();
+        min: T,
+        max: T,
+        ref: *T,
+        id: ?u16 = null,
+        buf: [4]u8 = [_]u8{' '} ** size,
+        pub fn value(self: *Self) Value {
+            return .{
+                .rw = .{
+                    .size = size,
+                    .ptr = self,
+                    .vtable = &.{ .get = get, .inc = inc, .dec = dec },
+                },
+            };
+        }
+        fn get(ctx: *anyopaque) []const u8 {
+            const self: *Self = @ptrCast(@alignCast(ctx));
+            _ = std.fmt.printInt(&self.buf, self.ref.*, base, .lower, .{ .alignment = .right, .width = size });
+            return &self.buf;
+        }
+        fn event(self: *Self) ?Event {
+            if (self.id) |id| {
+                return .{ .id = id, .pl = .value };
+            } else {
+                return null;
+            }
+        }
+
+        fn inc(ctx: *anyopaque) ?Event {
+            const self: *Self = @ptrCast(@alignCast(ctx));
+            if (self.ref.* >= self.max or self.ref.* < self.min) {
+                self.ref.* = self.min;
+            } else {
+                self.ref.* += 1;
+            }
+            return self.event();
+        }
+        fn dec(ctx: *anyopaque) ?Event {
+            const self: *Self = @ptrCast(@alignCast(ctx));
+            if (self.ref.* > self.max or self.ref.* <= self.min) {
+                self.ref.* = self.max;
+            } else {
+                self.ref.* -= 1;
+            }
+            return self.event();
+        }
+    };
+}
 
 pub fn RoRefIntValue(comptime T: type, comptime size: u8, comptime base: u8) type {
     return struct {

@@ -15,7 +15,7 @@ pub const Section = enum {
 
 pub const PayLoad = union(Tag) {
     section: Section,
-    value: u8,
+    value: void,
     button: bool,
 };
 

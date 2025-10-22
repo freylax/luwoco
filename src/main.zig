@@ -14,6 +14,7 @@ const Item = Tree.Item;
 const values = @import("tui/values.zig");
 const uib = @import("ui_buttons.zig");
 const IntValue = values.IntValue;
+const RefIntValue = values.RefIntValue;
 const RefPushButton = values.RefPushButton;
 const PushButton = values.PushButton;
 const ClickButton = values.ClickButton;
@@ -46,6 +47,8 @@ pub const microzig_options = microzig.Options{
 const EventId = enum(u16) {
     config,
     back_light,
+    min_max_x,
+    min_max_y,
     // save_config,
     drive_x,
     drive_y,
@@ -84,6 +87,12 @@ const button_masks = blk: {
 var config = Config{};
 
 var back_light = IntValue{ .min = 0, .max = 255, .val = 0, .id = EventId.back_light.id() };
+const RefIntVal = RefIntValue(i8, 4, 10);
+var min_x = RefIntVal{ .min = -10, .max = 0, .ref = &IO.drive_x_control.min_coord, .id = EventId.min_max_x.id() };
+var max_x = RefIntVal{ .min = 0, .max = 10, .ref = &IO.drive_x_control.max_coord, .id = EventId.min_max_x.id() };
+var min_y = RefIntVal{ .min = -10, .max = 0, .ref = &IO.drive_y_control.min_coord, .id = EventId.min_max_y.id() };
+var max_y = RefIntVal{ .min = 0, .max = 10, .ref = &IO.drive_y_control.max_coord, .id = EventId.min_max_y.id() };
+
 var pb_save_config = ClickButton(Config){
     .ref = &config,
     .enabled = Config.data_differ,
@@ -91,12 +100,24 @@ var pb_save_config = ClickButton(Config){
     // .id = EventId.save_config.id(),
 };
 
-var config_events: [1]Event = undefined;
+var config_events: [3]Event = undefined;
 fn applyConfig() []Event {
     var idx: usize = 0;
-    if (config.back_ground_light != back_light.val) {
-        back_light.val = config.back_ground_light;
+    if (config.back_light != back_light.val) {
+        back_light.val = config.back_light;
         config_events[idx] = .{ .id = .back_light, .pl = .cfg };
+        idx += 1;
+    }
+    if (config.min_x != IO.drive_x_control.min_coord or config.max_x != IO.drive_x_control.max_coord) {
+        IO.drive_x_control.min_coord = config.min_x;
+        IO.drive_x_control.max_coord = config.max_x;
+        config_events[idx] = .{ .id = .min_max_x, .pl = .cfg };
+        idx += 1;
+    }
+    if (config.min_y != IO.drive_y_control.min_coord or config.max_y != IO.drive_y_control.max_coord) {
+        IO.drive_y_control.min_coord = config.min_y;
+        IO.drive_y_control.max_coord = config.max_y;
+        config_events[idx] = .{ .id = .min_max_y, .pl = .cfg };
         idx += 1;
     }
     return config_events[0..idx];
@@ -152,10 +173,18 @@ const items: []const Item = &.{
         .id = EventId.config.id(),
         .str = " Config\n",
         .items = &.{
-            .{ .label = "Backlight:" },
-            .{ .value = back_light.value() },
-            .{ .label = "\nSave: " },
+            .{ .label = "Save: " },
             .{ .value = pb_save_config.value(.{}) },
+            .{ .label = "\nmin_x:" },
+            .{ .value = min_x.value() },
+            .{ .label = "\nmax_x:" },
+            .{ .value = max_x.value() },
+            .{ .label = "\nmin_y:" },
+            .{ .value = min_y.value() },
+            .{ .label = "\nmax_y:" },
+            .{ .value = max_y.value() },
+            .{ .label = "\nBacklight:" },
+            .{ .value = back_light.value() },
         },
     } },
     .{ .popup = .{
@@ -392,14 +421,38 @@ pub fn main() !void {
                     log.info("back_light event", .{});
                     switch (ev.pl) {
                         .tui => {
-                            config.back_ground_light = back_light.val;
+                            config.back_light = back_light.val;
                         },
                         .cfg => {
                             log.info("back_light cfg", .{});
-                            back_light.val = config.back_ground_light;
+                            back_light.val = config.back_light;
                         },
                     }
                     _ = lcd.setBackLight(back_light.val);
+                },
+                .min_max_x => {
+                    switch (ev.pl) {
+                        .tui => {
+                            config.min_x = IO.drive_x_control.min_coord;
+                            config.max_x = IO.drive_x_control.max_coord;
+                        },
+                        .cfg => {
+                            IO.drive_x_control.min_coord = config.min_x;
+                            IO.drive_x_control.max_coord = config.max_x;
+                        },
+                    }
+                },
+                .min_max_y => {
+                    switch (ev.pl) {
+                        .tui => {
+                            config.min_y = IO.drive_y_control.min_coord;
+                            config.max_y = IO.drive_y_control.max_coord;
+                        },
+                        .cfg => {
+                            IO.drive_y_control.min_coord = config.min_y;
+                            IO.drive_y_control.max_coord = config.max_y;
+                        },
+                    }
                 },
                 // .save_config => {
                 //     switch (ev.pl.tui.button) {

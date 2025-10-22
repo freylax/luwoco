@@ -25,6 +25,8 @@ drive: *Drive,
 pos_bt: *SampleButton,
 min_bt: *SampleButton,
 max_bt: *SampleButton,
+min_coord: i8 = 0,
+max_coord: i8 = 0,
 pos: Position = Position{},
 dir: Direction = .unspec,
 target_coord: i8 = 0,
@@ -87,6 +89,10 @@ pub fn sample(self: *Self, sample_time: time.Absolute) !void {
                         },
                     }
                     p.dev = .exact;
+                    if (p.coord == self.min_coord or p.coord == self.max_coord) {
+                        try self.drive.set(.off);
+                        self.state = .limited;
+                    }
                     if (p.coord == self.target_coord) {
                         // stop the drive
                         try self.drive.set(.off);
@@ -106,10 +112,9 @@ pub fn sample(self: *Self, sample_time: time.Absolute) !void {
                     p.dir = self.dir;
                     p.dev = .coarse;
                 },
-                .stoped => {
+                .stoped, .limited => {
                     p.dev = .small;
                 },
-                .limited => {},
             }
         },
         .unchanged => {},
