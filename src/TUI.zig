@@ -262,6 +262,7 @@ pub fn Impl(comptime tree: Tree, button_masks_: []const u8) type {
         // setup the initial cursor positions
         // and modi for values
         fn checkSections(self: *Self) void {
+            // std.log.info("checkSections:", .{});
             var db_i: u16 = 0;
             for (&self.sections) |*s| {
                 // count number of values in this section
@@ -271,6 +272,7 @@ pub fn Impl(comptime tree: Tree, button_masks_: []const u8) type {
                 var c_sec: u16 = 0;
                 const db_b = db_i;
                 while (i != s.end) {
+                    // std.log.info("cs: i={d}", .{i});
                     const item = self.items[i];
                     switch (item.tag) {
                         .value => {
@@ -278,6 +280,7 @@ pub fn Impl(comptime tree: Tree, button_masks_: []const u8) type {
                             switch (val) {
                                 .rw, .button => {
                                     c_val += 1;
+                                    // std.log.info("c_val:{d}", .{c_val});
                                 },
                                 else => {},
                             }
@@ -288,11 +291,13 @@ pub fn Impl(comptime tree: Tree, button_masks_: []const u8) type {
                         },
                         .section => {
                             c_sec += 1;
+                            // std.log.info("c_sec:{d}", .{c_sec});
                         },
                         else => {},
                     }
-                    if (c_sec + c_val == 1) {
+                    if (c_sec + c_val == 1 and first_selectable == null) {
                         first_selectable = i;
+                        // std.log.info("first_selectable:{d}", .{i});
                     }
                     i += 1;
                 }
@@ -301,6 +306,7 @@ pub fn Impl(comptime tree: Tree, button_masks_: []const u8) type {
                     s.type = .{ .direct = self.direct_buttons[db_b..db_i] };
                 } else if (first_selectable) |first| {
                     s.cursor = first;
+                    // std.log.info("cursor:{d}", .{s.cursor});
                     if (c_val == 1 and c_sec == 0) {
                         s.type = .one_value;
                     }
@@ -410,7 +416,20 @@ pub fn Impl(comptime tree: Tree, button_masks_: []const u8) type {
                                                 line_changed = true;
                                             }
                                         }
-                                        if (start == sec.cursor or line_changed or self.hasCursor(sec.cursor)) break;
+                                        if (line_changed) {
+                                            // find if there is a selectable item in this line
+                                            var c = sec.cursor;
+                                            while (c > sec.begin and c != start and self.items[c].pos.line == lines[0]) {
+                                                if (self.hasCursor(c)) {
+                                                    sec.cursor = c;
+                                                    break;
+                                                }
+                                                c -= 1;
+                                            }
+                                            break;
+                                        } else if (start == sec.cursor or self.hasCursor(sec.cursor)) {
+                                            break;
+                                        }
                                     }
                                 }
                             }
@@ -445,7 +464,20 @@ pub fn Impl(comptime tree: Tree, button_masks_: []const u8) type {
                                                 line_changed = true;
                                             }
                                         }
-                                        if (start == sec.cursor or line_changed or self.hasCursor(sec.cursor)) break;
+                                        if (line_changed) {
+                                            // find if there is a selectable item in this line
+                                            var c = sec.cursor;
+                                            while (c < sec.end and c != start and self.items[c].last.line <= lines[1]) {
+                                                if (self.hasCursor(c)) {
+                                                    sec.cursor = c;
+                                                    break;
+                                                }
+                                                c += 1;
+                                            }
+                                            break;
+                                        } else if (start == sec.cursor or self.hasCursor(sec.cursor)) {
+                                            break;
+                                        }
                                     }
                                 }
                             }
@@ -603,8 +635,8 @@ pub fn Impl(comptime tree: Tree, button_masks_: []const u8) type {
             const ev = advanceCursor(self, buttons);
             const sec: *RtSection = &self.sections[self.curSection];
             const cItem = self.items[sec.cursor];
-            // log.info("cursor item:{d} is at line:{d},column:{d}", .{ sec.cursor, cItem.pos.line, cItem.pos.column });
             if (self.hasCursor(sec.cursor)) {
+                // std.log.info("cursor item:{d} is at line:{d},column:{d}", .{ sec.cursor, cItem.pos.line, cItem.pos.column });
                 self.display.cursor(
                     cItem.pos.line,
                     cItem.pos.column,
@@ -619,7 +651,7 @@ pub fn Impl(comptime tree: Tree, button_masks_: []const u8) type {
                     },
                 );
             } else {
-                // log.info("set cursor off", .{});
+                // std.log.info("set cursor off", .{});
                 self.display.cursorOff();
             }
             return ev;
