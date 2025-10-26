@@ -17,6 +17,8 @@ const flash_target_contents = @as([*]const u8, @ptrFromInt(flash.XIP_BASE + flas
 // this has to be adjusted if more entries are populated
 const max_size: u8 = 5;
 
+pub var values: Self = Self{};
+
 back_light: u8 = 0,
 min_x: i8 = -5,
 max_x: i8 = 5,
@@ -49,8 +51,13 @@ var journal = FlashJournal.create(
 pub fn read(self: *Self) void {
     mem.copyForwards(u8, mem.asBytes(self), journal.read());
 }
+pub fn read_() void {
+    read(@ptrCast(&values));
+}
 
 pub fn write(self: *Self) void {
+    const cs = microzig.interrupt.enter_critical_section();
+    defer cs.leave();
     journal.write(mem.asBytes(self));
 }
 

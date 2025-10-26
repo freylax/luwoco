@@ -1,6 +1,7 @@
 const std = @import("std");
 const microzig = @import("microzig");
 const peripherals = microzig.chip.peripherals;
+const Config = @import("Config.zig");
 const Drive = @import("Drive.zig");
 const Relais = @import("Relais.zig");
 const SampleButton = @import("SampleButton.zig");
@@ -81,12 +82,16 @@ pub var drive_x_control = DriveControl{
     .pos_bt = &pos_x_pos,
     .min_bt = &pos_x_min,
     .max_bt = &pos_x_max,
+    .min_coord = &Config.values.min_x,
+    .max_coord = &Config.values.max_x,
 };
 pub var drive_y_control = DriveControl{
     .drive = &drive_y,
     .pos_bt = &pos_y_pos,
     .min_bt = &pos_y_min,
     .max_bt = &pos_y_max,
+    .min_coord = &Config.values.min_y,
+    .max_coord = &Config.values.max_y,
 };
 
 pub fn init() !void {

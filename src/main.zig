@@ -84,44 +84,43 @@ const button_masks = blk: {
     break :blk a;
 };
 
-var config = Config{};
-
-var back_light = IntValue{ .min = 0, .max = 255, .val = 0, .id = EventId.back_light.id() };
-const RefIntVal = RefIntValue(i8, 4, 10);
-var min_x = RefIntVal{ .min = -10, .max = 0, .ref = &IO.drive_x_control.min_coord, .id = EventId.min_max_x.id() };
-var max_x = RefIntVal{ .min = 0, .max = 10, .ref = &IO.drive_x_control.max_coord, .id = EventId.min_max_x.id() };
-var min_y = RefIntVal{ .min = -10, .max = 0, .ref = &IO.drive_y_control.min_coord, .id = EventId.min_max_y.id() };
-var max_y = RefIntVal{ .min = 0, .max = 10, .ref = &IO.drive_y_control.max_coord, .id = EventId.min_max_y.id() };
+const RefU8Val = RefIntValue(u8, 4, 10);
+var back_light = RefU8Val{ .min = 0, .max = 255, .ref = &Config.values.back_light, .id = EventId.back_light.id() };
+const RefI8Val = RefIntValue(i8, 4, 10);
+var min_x = RefI8Val{ .min = -10, .max = 0, .ref = &Config.values.min_x, .id = EventId.min_max_x.id() };
+var max_x = RefI8Val{ .min = 0, .max = 10, .ref = &Config.values.max_x, .id = EventId.min_max_x.id() };
+var min_y = RefI8Val{ .min = -10, .max = 0, .ref = &Config.values.min_y, .id = EventId.min_max_y.id() };
+var max_y = RefI8Val{ .min = 0, .max = 10, .ref = &Config.values.max_y, .id = EventId.min_max_y.id() };
 
 var pb_save_config = ClickButton(Config){
-    .ref = &config,
+    .ref = &Config.values,
     .enabled = Config.data_differ,
     .clicked = Config.write,
     // .id = EventId.save_config.id(),
 };
 
-var config_events: [3]Event = undefined;
-fn applyConfig() []Event {
-    var idx: usize = 0;
-    if (config.back_light != back_light.val) {
-        back_light.val = config.back_light;
-        config_events[idx] = .{ .id = .back_light, .pl = .cfg };
-        idx += 1;
-    }
-    if (config.min_x != IO.drive_x_control.min_coord or config.max_x != IO.drive_x_control.max_coord) {
-        IO.drive_x_control.min_coord = config.min_x;
-        IO.drive_x_control.max_coord = config.max_x;
-        config_events[idx] = .{ .id = .min_max_x, .pl = .cfg };
-        idx += 1;
-    }
-    if (config.min_y != IO.drive_y_control.min_coord or config.max_y != IO.drive_y_control.max_coord) {
-        IO.drive_y_control.min_coord = config.min_y;
-        IO.drive_y_control.max_coord = config.max_y;
-        config_events[idx] = .{ .id = .min_max_y, .pl = .cfg };
-        idx += 1;
-    }
-    return config_events[0..idx];
-}
+// var config_events: [3]Event = undefined;
+// fn applyConfig() []Event {
+//     var idx: usize = 0;
+//     if (config.back_light != back_light.val) {
+//         back_light.val = config.back_light;
+//         config_events[idx] = .{ .id = .back_light, .pl = .cfg };
+//         idx += 1;
+//     }
+//     if (config.min_x != IO.drive_x_control.min_coord or config.max_x != IO.drive_x_control.max_coord) {
+//         IO.drive_x_control.min_coord = config.min_x;
+//         IO.drive_x_control.max_coord = config.max_x;
+//         config_events[idx] = .{ .id = .min_max_x, .pl = .cfg };
+//         idx += 1;
+//     }
+//     if (config.min_y != IO.drive_y_control.min_coord or config.max_y != IO.drive_y_control.max_coord) {
+//         IO.drive_y_control.min_coord = config.min_y;
+//         IO.drive_y_control.max_coord = config.max_y;
+//         config_events[idx] = .{ .id = .min_max_y, .pl = .cfg };
+//         idx += 1;
+//     }
+//     return config_events[0..idx];
+// }
 
 var drive_x_state: Drive.State = .off;
 var pb_dx_dir_a = RefPushButton(Drive.State){
@@ -348,6 +347,7 @@ const LCD = olimex_lcd.BufferedLCD(tree.bufferLines);
 const TuiImpl = TUI.Impl(tree, &button_masks);
 
 pub fn main() !void {
+    Config.read(&Config.values);
     try IO.init();
     // init uart logging
     rp2xxx.uart.init_logger(IO.uart0);
@@ -362,22 +362,22 @@ pub fn main() !void {
 
     try IO.begin();
 
-    config.read();
-    var cfg_events = applyConfig();
+    // var cfg_events = applyConfig();
 
     // we need some time after boot for i2c to become ready, otherwise
     // unsupported will be thrown
     time.sleep_ms(1000);
+    _ = lcd.setBackLight(Config.values.back_light);
     display.cursor(0, 0, 0, 0, .select);
     time.sleep_ms(100);
     while (true) {
         var events: [8]Event = undefined;
         var ev_idx: u8 = 0;
-        while (cfg_events.len > 0 and ev_idx < events.len) {
-            events[ev_idx] = cfg_events[0];
-            cfg_events = cfg_events[1..];
-            ev_idx += 1;
-        }
+        // while (cfg_events.len > 0 and ev_idx < events.len) {
+        //     events[ev_idx] = cfg_events[0];
+        //     cfg_events = cfg_events[1..];
+        //     ev_idx += 1;
+        // }
         tui.writeValues();
         if (tui.print()) {} else |_| {}
         time.sleep_ms(100);
@@ -419,41 +419,10 @@ pub fn main() !void {
                 },
                 .back_light => {
                     log.info("back_light event", .{});
-                    switch (ev.pl) {
-                        .tui => {
-                            config.back_light = back_light.val;
-                        },
-                        .cfg => {
-                            log.info("back_light cfg", .{});
-                            back_light.val = config.back_light;
-                        },
-                    }
-                    _ = lcd.setBackLight(back_light.val);
+                    _ = lcd.setBackLight(back_light.ref.*);
                 },
-                .min_max_x => {
-                    switch (ev.pl) {
-                        .tui => {
-                            config.min_x = IO.drive_x_control.min_coord;
-                            config.max_x = IO.drive_x_control.max_coord;
-                        },
-                        .cfg => {
-                            IO.drive_x_control.min_coord = config.min_x;
-                            IO.drive_x_control.max_coord = config.max_x;
-                        },
-                    }
-                },
-                .min_max_y => {
-                    switch (ev.pl) {
-                        .tui => {
-                            config.min_y = IO.drive_y_control.min_coord;
-                            config.max_y = IO.drive_y_control.max_coord;
-                        },
-                        .cfg => {
-                            IO.drive_y_control.min_coord = config.min_y;
-                            IO.drive_y_control.max_coord = config.max_y;
-                        },
-                    }
-                },
+                .min_max_x => {},
+                .min_max_y => {},
                 // .save_config => {
                 //     switch (ev.pl.tui.button) {
                 //         true => {
