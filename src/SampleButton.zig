@@ -1,17 +1,20 @@
 const microzig = @import("microzig");
 const std = @import("std");
 const drivers = microzig.drivers;
+const Digital_IO = drivers.base.Digital_IO;
 const time = drivers.time;
 const Value = @import("tui/items.zig").Value;
 
 const Self = @This();
 
-pin: drivers.base.Digital_IO, // = null,
-active: drivers.base.Digital_IO.State = .high,
+pin: Digital_IO, // = null,
+active: Digital_IO.State = .high,
 buf: [3]u8 = .{ '(', 'E', ')' },
 last_change: time.Absolute = .from_us(0),
 is_active: bool = false,
 min_switch_time: time.Duration = .from_ms(10),
+use_simulator: *const bool,
+simulator_pin: *const Digital_IO.State,
 
 pub fn readValue(self: *Self) Value {
     return .{ .ro = .{
@@ -22,7 +25,7 @@ pub fn readValue(self: *Self) Value {
 }
 
 pub fn read(self: Self) !bool {
-    const s = try self.pin.read();
+    const s = if (self.use_simulator.*) self.simulator_pin.* else try self.pin.read();
     return s == self.active;
 }
 

@@ -1,22 +1,47 @@
 const microzig = @import("microzig");
 const std = @import("std");
 const drivers = microzig.drivers;
-
+const Digital_IO = drivers.base.Digital_IO;
 const Self = @This();
 
 pub const State = enum { off, dir_a, dir_b };
-enable: drivers.base.Digital_IO,
-dir_a: drivers.base.Digital_IO,
-dir_b: drivers.base.Digital_IO,
+enable: Digital_IO,
+dir_a: Digital_IO,
+dir_b: Digital_IO,
 state: State = .off,
+use_simulator: *const bool,
+sim_enable: *Digital_IO.State,
+sim_dir_a: *Digital_IO.State,
+sim_dir_b: *Digital_IO.State,
+
+fn set_enable(self: *Self, s: Digital_IO.State) !void {
+    if (self.use_simulator.*) {
+        self.sim_enable.* = s;
+    } else {
+        try self.enable.write(s);
+    }
+}
+
+fn set_dir_a(self: *Self, s: Digital_IO.State) !void {
+    if (self.use_simulator.*) {
+        self.sim_dir_a.* = s;
+    } else {
+        try self.dir_a.write(s);
+    }
+}
+
+fn set_dir_b(self: *Self, s: Digital_IO.State) !void {
+    if (self.use_simulator.*) {
+        self.sim_dir_b.* = s;
+    } else {
+        try self.dir_b.write(s);
+    }
+}
 
 pub fn begin(self: *Self) !void {
-    // try self.enable.set_direction(.output);
-    try self.enable.write(.low);
-    // try self.dir_a.set_direction(.output);
-    try self.dir_a.write(.low);
-    // try self.dir_b.set_direction(.output);
-    try self.dir_b.write(.low);
+    try self.set_enable(.low);
+    try self.set_dir_a(.low);
+    try self.set_dir_b(.low);
 }
 pub fn set(self: *Self, new_state: State) !void {
     if (self.state == new_state) {
@@ -25,23 +50,23 @@ pub fn set(self: *Self, new_state: State) !void {
     switch (self.state) {
         .off => {},
         .dir_a => {
-            try self.enable.write(.low);
-            try self.dir_a.write(.low);
+            try self.set_enable(.low);
+            try self.set_dir_a(.low);
         },
         .dir_b => {
-            try self.enable.write(.low);
-            try self.dir_b.write(.low);
+            try self.set_enable(.low);
+            try self.set_dir_b(.low);
         },
     }
     switch (new_state) {
         .off => {},
         .dir_a => {
-            try self.dir_a.write(.high);
-            try self.enable.write(.high);
+            try self.set_dir_a(.high);
+            try self.set_enable(.high);
         },
         .dir_b => {
-            try self.dir_b.write(.high);
-            try self.enable.write(.high);
+            try self.set_dir_b(.high);
+            try self.set_enable(.high);
         },
     }
     self.state = new_state;

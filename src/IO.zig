@@ -6,6 +6,7 @@ const Drive = @import("Drive.zig");
 const Relais = @import("Relais.zig");
 const SampleButton = @import("SampleButton.zig");
 const DriveControl = @import("DriveControl.zig");
+const MotionSimulator = @import("MotionSimulator.zig");
 const rp2xxx = microzig.hal;
 const gpio = rp2xxx.gpio;
 const time = rp2xxx.time;
@@ -59,21 +60,61 @@ const baud_rate = 115200;
 pub const i2c0 = rp2xxx.i2c.instance.num(0);
 
 pub var i2c_device = I2C_Device.init(i2c0, null);
-pub var pos_x_pos = SampleButton{ .pin = iod.pos_x_pos.digital_io(), .active = .low };
-pub var pos_x_min = SampleButton{ .pin = iod.pos_x_min.digital_io(), .active = .low };
-pub var pos_x_max = SampleButton{ .pin = iod.pos_x_max.digital_io(), .active = .low };
-pub var pos_y_pos = SampleButton{ .pin = iod.pos_y_pos.digital_io(), .active = .low };
-pub var pos_y_min = SampleButton{ .pin = iod.pos_y_min.digital_io(), .active = .low };
-pub var pos_y_max = SampleButton{ .pin = iod.pos_y_max.digital_io(), .active = .low };
+pub var x_sim = MotionSimulator{};
+pub var y_sim = MotionSimulator{};
+pub var pos_x_pos = SampleButton{
+    .pin = iod.pos_x_pos.digital_io(),
+    .active = .low,
+    .simulator_pin = &x_sim.pos,
+    .use_simulator = &Config.values.use_simulator,
+};
+pub var pos_x_min = SampleButton{
+    .pin = iod.pos_x_min.digital_io(),
+    .active = .low,
+    .simulator_pin = &x_sim.min,
+    .use_simulator = &Config.values.use_simulator,
+};
+pub var pos_x_max = SampleButton{
+    .pin = iod.pos_x_max.digital_io(),
+    .active = .low,
+    .simulator_pin = &x_sim.max,
+    .use_simulator = &Config.values.use_simulator,
+};
+pub var pos_y_pos = SampleButton{
+    .pin = iod.pos_y_pos.digital_io(),
+    .active = .low,
+    .simulator_pin = &y_sim.pos,
+    .use_simulator = &Config.values.use_simulator,
+};
+pub var pos_y_min = SampleButton{
+    .pin = iod.pos_y_min.digital_io(),
+    .active = .low,
+    .simulator_pin = &y_sim.min,
+    .use_simulator = &Config.values.use_simulator,
+};
+pub var pos_y_max = SampleButton{
+    .pin = iod.pos_y_max.digital_io(),
+    .active = .low,
+    .simulator_pin = &y_sim.max,
+    .use_simulator = &Config.values.use_simulator,
+};
 pub var drive_x = Drive{
     .enable = iod.drive_x_enable.digital_io(),
     .dir_a = iod.drive_x_dir_a.digital_io(),
     .dir_b = iod.drive_x_dir_b.digital_io(),
+    .sim_enable = &x_sim.enable,
+    .sim_dir_a = &x_sim.dir_a,
+    .sim_dir_b = &x_sim.dir_b,
+    .use_simulator = &Config.values.use_simulator,
 };
 pub var drive_y = Drive{
     .enable = iod.drive_y_enable.digital_io(),
     .dir_a = iod.drive_y_dir_a.digital_io(),
     .dir_b = iod.drive_y_dir_b.digital_io(),
+    .sim_enable = &y_sim.enable,
+    .sim_dir_a = &y_sim.dir_a,
+    .sim_dir_b = &y_sim.dir_b,
+    .use_simulator = &Config.values.use_simulator,
 };
 pub var relais_a = Relais{ .pin = iod.relais_a.digital_io() };
 pub var relais_b = Relais{ .pin = iod.relais_b.digital_io() };

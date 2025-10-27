@@ -39,8 +39,8 @@ pub const microzig_options = microzig.Options{
     .log_level = .info,
     .logFn = rp2xxx.uart.log,
     .interrupts = .{
-        // .TIMER_IRQ_0 = .{ .c = timer_interrupt },
-        .IO_IRQ_BANK0 = .{ .c = switch_handler },
+        .TIMER_IRQ_0 = .{ .c = motion_simulator_ir_handler },
+        .IO_IRQ_BANK0 = .{ .c = switch_ir_handler },
     },
 };
 
@@ -310,17 +310,16 @@ const items: []const Item = &.{
     },
 };
 
-// fn timer_interrupt() callconv(.c) void {
-//     const cs = microzig.interrupt.enter_critical_section();
-//     defer cs.leave();
-//     // input_a.val = if (input_a.val) false else true;
+fn motion_simulator_ir_handler() callconv(.c) void {
+    const cs = microzig.interrupt.enter_critical_section();
+    defer cs.leave();
 
-//     timer.INTR.modify(.{ .ALARM_0 = 1 });
+    // timer.INTR.modify(.{ .ALARM_0 = 1 });
 
-//     set_alarm(1_000_000);
-// }
+    // set_alarm(1_000_000);
+}
 
-pub fn switch_handler() callconv(.c) void {
+pub fn switch_ir_handler() callconv(.c) void {
     // disable interrupts
     const cs = microzig.interrupt.enter_critical_section();
     defer cs.leave(); // enable interrupts
@@ -361,8 +360,6 @@ pub fn main() !void {
     time.sleep_ms(100);
 
     try IO.begin();
-
-    // var cfg_events = applyConfig();
 
     // we need some time after boot for i2c to become ready, otherwise
     // unsupported will be thrown

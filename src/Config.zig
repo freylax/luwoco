@@ -15,7 +15,7 @@ const pages = flash.SECTOR_SIZE / flash.PAGE_SIZE; // 4096 / 256 = 16 pages
 const flash_target_offset = 0x20_0000 - flash.SECTOR_SIZE; // 2 MB Flash
 const flash_target_contents = @as([*]const u8, @ptrFromInt(flash.XIP_BASE + flash_target_offset));
 // this has to be adjusted if more entries are populated
-const max_size: u8 = 5;
+const max_size: u8 = 6;
 
 pub var values: Self = Self{};
 
@@ -24,6 +24,7 @@ min_x: i8 = -5,
 max_x: i8 = 5,
 min_y: i8 = -3,
 max_y: i8 = 3,
+use_simulator: bool = false,
 
 fn write_page(page_idx: usize, page: []const u8) void {
     comptime assert(max_size >= my_size);
@@ -51,11 +52,9 @@ var journal = FlashJournal.create(
 pub fn read(self: *Self) void {
     mem.copyForwards(u8, mem.asBytes(self), journal.read());
 }
-pub fn read_() void {
-    read(@ptrCast(&values));
-}
 
 pub fn write(self: *Self) void {
+    // disable interrupts during write to flash
     const cs = microzig.interrupt.enter_critical_section();
     defer cs.leave();
     journal.write(mem.asBytes(self));
