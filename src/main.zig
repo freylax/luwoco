@@ -15,6 +15,7 @@ const values = @import("tui/values.zig");
 const uib = @import("ui_buttons.zig");
 const IntValue = values.IntValue;
 const RefIntValue = values.RefIntValue;
+const RefBoolValue = values.RefBoolValue;
 const RefPushButton = values.RefPushButton;
 const PushButton = values.PushButton;
 const ClickButton = values.ClickButton;
@@ -23,7 +24,6 @@ const Config = @import("Config.zig");
 const FlashJournal = @import("FlashJournal.zig");
 
 const rp2xxx = microzig.hal;
-const interrupt = microzig.cpu.interrupt;
 const time = rp2xxx.time;
 const gpio = rp2xxx.gpio;
 const Mutex = rp2xxx.mutex.Mutex;
@@ -31,22 +31,22 @@ const multicore = rp2xxx.multicore;
 const fifo = multicore.fifo;
 const log = std.log;
 const assert = std.debug.assert;
-
-// const timer = peripherals.TIMER;
-// const timer_irq = .TIMER_IRQ_0;
+const system_timer = rp2xxx.system_timer;
+const timer0 = system_timer.num(0);
 
 pub const microzig_options = microzig.Options{
     .log_level = .info,
     .logFn = rp2xxx.uart.log,
     .interrupts = .{
-        .TIMER_IRQ_0 = .{ .c = motion_simulator_ir_handler },
-        .IO_IRQ_BANK0 = .{ .c = switch_ir_handler },
+        .TIMER_IRQ_0 = .{ .c = simulator_interrupt_handler },
+        .IO_IRQ_BANK0 = .{ .c = switch_interrupt_handler },
     },
 };
 
 const EventId = enum(u16) {
     config,
     back_light,
+    use_simulator,
     min_max_x,
     min_max_y,
     // save_config,
@@ -91,36 +91,13 @@ var min_x = RefI8Val{ .min = -10, .max = 0, .ref = &Config.values.min_x, .id = E
 var max_x = RefI8Val{ .min = 0, .max = 10, .ref = &Config.values.max_x, .id = EventId.min_max_x.id() };
 var min_y = RefI8Val{ .min = -10, .max = 0, .ref = &Config.values.min_y, .id = EventId.min_max_y.id() };
 var max_y = RefI8Val{ .min = 0, .max = 10, .ref = &Config.values.max_y, .id = EventId.min_max_y.id() };
+var use_simulator = RefBoolValue{ .ref = &Config.values.use_simulator, .id = EventId.use_simulator.id() };
 
 var pb_save_config = ClickButton(Config){
     .ref = &Config.values,
     .enabled = Config.data_differ,
     .clicked = Config.write,
-    // .id = EventId.save_config.id(),
 };
-
-// var config_events: [3]Event = undefined;
-// fn applyConfig() []Event {
-//     var idx: usize = 0;
-//     if (config.back_light != back_light.val) {
-//         back_light.val = config.back_light;
-//         config_events[idx] = .{ .id = .back_light, .pl = .cfg };
-//         idx += 1;
-//     }
-//     if (config.min_x != IO.drive_x_control.min_coord or config.max_x != IO.drive_x_control.max_coord) {
-//         IO.drive_x_control.min_coord = config.min_x;
-//         IO.drive_x_control.max_coord = config.max_x;
-//         config_events[idx] = .{ .id = .min_max_x, .pl = .cfg };
-//         idx += 1;
-//     }
-//     if (config.min_y != IO.drive_y_control.min_coord or config.max_y != IO.drive_y_control.max_coord) {
-//         IO.drive_y_control.min_coord = config.min_y;
-//         IO.drive_y_control.max_coord = config.max_y;
-//         config_events[idx] = .{ .id = .min_max_y, .pl = .cfg };
-//         idx += 1;
-//     }
-//     return config_events[0..idx];
-// }
 
 var drive_x_state: Drive.State = .off;
 var pb_dx_dir_a = RefPushButton(Drive.State){
@@ -182,6 +159,8 @@ const items: []const Item = &.{
             .{ .value = min_y.value() },
             .{ .label = "\nmax_y:" },
             .{ .value = max_y.value() },
+            .{ .label = "\nsimulator:" },
+            .{ .value = use_simulator.value() },
             .{ .label = "\nBacklight:" },
             .{ .value = back_light.value() },
         },
@@ -310,16 +289,32 @@ const items: []const Item = &.{
     },
 };
 
-fn motion_simulator_ir_handler() callconv(.c) void {
+fn switch_simulator_interrupt() void {
+    if (Config.values.use_simulator) {
+        microzig.interrupt.enable(.TIMER_IRQ_0);
+        timer0.set_interrupt_enabled(.alarm0, true);
+        // set alarm for 1 second
+        timer0.schedule_alarm(.alarm0, timer0.read_low() +% 1_000_000);
+    } else {
+        timer0.set_interrupt_enabled(.alarm0, false);
+    }
+}
+fn simulator_interrupt_handler() callconv(.c) void {
     const cs = microzig.interrupt.enter_critical_section();
     defer cs.leave();
 
-    // timer.INTR.modify(.{ .ALARM_0 = 1 });
+    const t = time.get_time_since_boot();
+    IO.x_sim.sample(t); // set state of input devices
+    IO.y_sim.sample(t);
+    if (IO.drive_x_control.sample(t)) {} else |_| {}
+    if (IO.drive_y_control.sample(t)) {} else |_| {}
 
-    // set_alarm(1_000_000);
+    timer0.clear_interrupt(.alarm0);
+    // set alarm for 1 second
+    timer0.schedule_alarm(.alarm0, timer0.read_low() +% 1_000_000);
 }
 
-pub fn switch_ir_handler() callconv(.c) void {
+pub fn switch_interrupt_handler() callconv(.c) void {
     // disable interrupts
     const cs = microzig.interrupt.enter_critical_section();
     defer cs.leave(); // enable interrupts
@@ -367,6 +362,7 @@ pub fn main() !void {
     _ = lcd.setBackLight(Config.values.back_light);
     display.cursor(0, 0, 0, 0, .select);
     time.sleep_ms(100);
+    switch_simulator_interrupt();
     while (true) {
         var events: [8]Event = undefined;
         var ev_idx: u8 = 0;
@@ -417,6 +413,9 @@ pub fn main() !void {
                 .back_light => {
                     log.info("back_light event", .{});
                     _ = lcd.setBackLight(back_light.ref.*);
+                },
+                .use_simulator => {
+                    switch_simulator_interrupt();
                 },
                 .min_max_x => {},
                 .min_max_y => {},

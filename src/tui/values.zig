@@ -173,6 +173,48 @@ pub fn RefIntValue(comptime T: type, comptime size: u8, comptime base: u8) type 
     };
 }
 
+pub const RefBoolValue = struct {
+    const Self = @This();
+    ref: *bool,
+    id: ?u16 = null,
+    buf: [2]u8 = [_]u8{' '} ** 2,
+    pub fn value(self: *Self) Value {
+        return .{
+            .rw = .{
+                .size = 2,
+                .ptr = self,
+                .vtable = &.{ .get = get, .inc = inc, .dec = dec },
+            },
+        };
+    }
+    fn get(ctx: *anyopaque) []const u8 {
+        const self: *Self = @ptrCast(@alignCast(ctx));
+        if (self.ref.*) {
+            self.buf[1] = 'X';
+        } else {
+            self.buf[1] = 'O';
+        }
+        return &self.buf;
+    }
+    fn event(self: *Self) ?Event {
+        if (self.id) |id| {
+            return .{ .id = id, .pl = .value };
+        } else {
+            return null;
+        }
+    }
+    fn inc(ctx: *anyopaque) ?Event {
+        const self: *Self = @ptrCast(@alignCast(ctx));
+        self.ref.* = !self.ref.*;
+        return self.event();
+    }
+    fn dec(ctx: *anyopaque) ?Event {
+        const self: *Self = @ptrCast(@alignCast(ctx));
+        self.ref.* = !self.ref.*;
+        return self.event();
+    }
+};
+
 pub fn RoRefIntValue(comptime T: type, comptime size: u8, comptime base: u8) type {
     return struct {
         const Self = @This();
