@@ -51,6 +51,7 @@ pub fn sample(self: *Self, sample_time: time.Absolute) !void {
     const p = &self.pos;
     switch (pos_ev) {
         .changed_to_active => {
+            std.log.info("dc:change_to_active1, coord={d},min={d},max={d}", .{ p.coord, self.min_coord.*, self.max_coord.* });
             switch (self.state) {
                 .moving => {
                     switch (p.dir) {
@@ -89,11 +90,11 @@ pub fn sample(self: *Self, sample_time: time.Absolute) !void {
                         },
                     }
                     p.dev = .exact;
+                    std.log.info("dc:change_to_active2, coord={d},min={d},max={d}", .{ p.coord, self.min_coord.*, self.max_coord.* });
                     if (p.coord == self.min_coord.* or p.coord == self.max_coord.*) {
                         try self.drive.set(.off);
                         self.state = .limited;
-                    }
-                    if (p.coord == self.target_coord) {
+                    } else if (p.coord == self.target_coord) {
                         // stop the drive
                         try self.drive.set(.off);
                         self.state = .stoped;
@@ -107,6 +108,7 @@ pub fn sample(self: *Self, sample_time: time.Absolute) !void {
             }
         },
         .changed_to_inactive => {
+            std.log.info("dc:change_to_inactive", .{});
             switch (self.state) {
                 .moving => {
                     p.dir = self.dir;

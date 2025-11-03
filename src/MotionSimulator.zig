@@ -7,16 +7,90 @@ const time = drivers.time;
 
 const Self = @This();
 
-min: IOState = .low,
-max: IOState = .low,
-pos: IOState = .low,
-enable: IOState = .low,
-dir_a: IOState = .low,
-dir_b: IOState = .low,
+pub const State = enum { stoped, moving };
 
-run: bool = false,
+pub const Deviation = enum(u2) { exact, coarse };
+pub const Direction = enum(u2) { unspec, forward, backward };
+
+pub const Position = struct {
+    coord: i8 = 0,
+    dev: Deviation = .exact,
+    dir: Direction = .unspec,
+};
+
+const switching_time: time.Duration = .from_ms(100); // a tenst of  second
+const driving_time: time.Duration = .from_ms(3000); // three seconds
+
+min_pin: IOState = .low,
+max_pin: IOState = .low,
+pos_pin: IOState = .low,
+enable_pin: IOState = .low,
+dir_a_pin: IOState = .low,
+dir_b_pin: IOState = .low,
+
+pos: Position = Position{},
+state: State = .stoped,
+last_change: time.Absolute = .from_us(0),
 
 pub fn sample(self: *Self, sample_time: time.Absolute) void {
-    _ = self;
-    _ = sample_time;
+    switch (self.state) {
+        .stoped => {
+            switch (self.enable_pin) {
+                .high => {
+                    // start drive
+                    const dir: Direction = if (self.dir_a_pin == .high) .forward else if (self.dir_b_pin == .high) .backward else .unspec;
+                    switch (self.pos.dev) {
+                        .exact => {}, // start from exact position
+                        .coarse => { // start from inbetween
+                            if (dir != self.pos.dir) {
+                                // correct coord if we have a direction change
+                                self.pos.coord += switch (dir) {
+                                    .forward => -1,
+                                    .backward => 1,
+                                    .unspec => 0,
+                                };
+                            }
+                        },
+                    }
+                    self.state = .moving;
+                    self.pos.dir = dir;
+                },
+                .low => {},
+            }
+        },
+        .moving => {
+            switch (self.enable_pin) {
+                .high => {
+                    // moving
+                    const dt = sample_time.diff(self.last_change);
+                    switch (self.pos.dev) {
+                        .exact => {
+                            if (switching_time.less_than(dt)) {
+                                self.pos.dev = .coarse;
+                                self.pos_pin = .low;
+                                self.last_change = sample_time;
+                            }
+                        },
+                        .coarse => {
+                            if (driving_time.less_than(dt)) {
+                                // we arrive at the next coord
+                                self.pos.dev = .exact;
+                                self.pos_pin = .high;
+                                self.last_change = sample_time;
+                                if (self.dir_a_pin == .high) {
+                                    self.pos.coord += 1;
+                                }
+                                if (self.dir_a_pin == .high) {
+                                    self.pos.coord -= 1;
+                                }
+                            }
+                        },
+                    }
+                },
+                .low => {
+                    self.state = .stoped;
+                },
+            }
+        },
+    }
 }

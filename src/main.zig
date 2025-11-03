@@ -91,7 +91,7 @@ var min_x = RefI8Val{ .min = -10, .max = 0, .ref = &Config.values.min_x, .id = E
 var max_x = RefI8Val{ .min = 0, .max = 10, .ref = &Config.values.max_x, .id = EventId.min_max_x.id() };
 var min_y = RefI8Val{ .min = -10, .max = 0, .ref = &Config.values.min_y, .id = EventId.min_max_y.id() };
 var max_y = RefI8Val{ .min = 0, .max = 10, .ref = &Config.values.max_y, .id = EventId.min_max_y.id() };
-var use_simulator = RefBoolValue{ .ref = &Config.values.use_simulator, .id = EventId.use_simulator.id() };
+var use_simulator = RefBoolValue{ .ref = &IO.use_simulator, .id = EventId.use_simulator.id() };
 
 var pb_save_config = ClickButton(Config){
     .ref = &Config.values,
@@ -159,8 +159,6 @@ const items: []const Item = &.{
             .{ .value = min_y.value() },
             .{ .label = "\nmax_y:" },
             .{ .value = max_y.value() },
-            .{ .label = "\nsimulator:" },
-            .{ .value = use_simulator.value() },
             .{ .label = "\nBacklight:" },
             .{ .value = back_light.value() },
         },
@@ -209,6 +207,8 @@ const items: []const Item = &.{
             .str = " drive y\n",
             .items = drive_y_ui.ui(),
         } },
+        .{ .label = "\nsimulator:" },
+        .{ .value = use_simulator.value() },
     } } },
     .{ .popup = .{
         .str = " input test\n",
@@ -290,7 +290,7 @@ const items: []const Item = &.{
 };
 
 fn switch_simulator_interrupt() void {
-    if (Config.values.use_simulator) {
+    if (IO.use_simulator) {
         microzig.interrupt.enable(.TIMER_IRQ_0);
         timer0.set_interrupt_enabled(.alarm0, true);
         // set alarm for 1 second
