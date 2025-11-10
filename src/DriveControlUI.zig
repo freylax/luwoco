@@ -3,10 +3,7 @@ const values = @import("tui/values.zig");
 const ClickButton = values.ClickButton;
 const RoRefIntValue = values.RoRefIntValue;
 const EnumRefValue = values.EnumRefValue;
-const items = @import("tui/items.zig");
-const Value = items.Value;
-const Tree = @import("tui/Tree.zig");
-const Item = Tree.Item;
+const Item = @import("tui/Tree.zig").Item;
 const uib = @import("ui_buttons.zig");
 
 const Self = @This();

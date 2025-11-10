@@ -51,7 +51,7 @@ pub fn sample(self: *Self, sample_time: time.Absolute) !void {
     const p = &self.pos;
     switch (pos_ev) {
         .changed_to_active => {
-            std.log.info("dc:change_to_active1, coord={d},min={d},max={d}", .{ p.coord, self.min_coord.*, self.max_coord.* });
+            // std.log.info("dc:change_to_active1, coord={d},min={d},max={d}", .{ p.coord, self.min_coord.*, self.max_coord.* });
             switch (self.state) {
                 .moving => {
                     switch (p.dir) {
@@ -90,14 +90,14 @@ pub fn sample(self: *Self, sample_time: time.Absolute) !void {
                         },
                     }
                     p.dev = .exact;
-                    std.log.info("dc:change_to_active2, coord={d},min={d},max={d}", .{ p.coord, self.min_coord.*, self.max_coord.* });
-                    if (p.coord == self.min_coord.* or p.coord == self.max_coord.*) {
-                        try self.drive.set(.off);
-                        self.state = .limited;
-                    } else if (p.coord == self.target_coord) {
+                    // std.log.info("dc:change_to_active2, coord={d},min={d},max={d}", .{ p.coord, self.min_coord.*, self.max_coord.* });
+                    if (p.coord == self.target_coord) {
                         // stop the drive
                         try self.drive.set(.off);
                         self.state = .stoped;
+                    } else if (p.coord == self.min_coord.* or p.coord == self.max_coord.*) {
+                        try self.drive.set(.off);
+                        self.state = .limited;
                     }
                 },
                 .stoped => {
@@ -108,7 +108,7 @@ pub fn sample(self: *Self, sample_time: time.Absolute) !void {
             }
         },
         .changed_to_inactive => {
-            std.log.info("dc:change_to_inactive", .{});
+            // std.log.info("dc:change_to_inactive", .{});
             switch (self.state) {
                 .moving => {
                     p.dir = self.dir;
@@ -168,6 +168,26 @@ pub fn stepBackward(self: *Self) !void {
     }
 }
 
+pub fn goto(self: *Self, coord: i8) !void {
+    switch (self.state) {
+        .stoped, .limited => {
+            const inrange = coord >= self.min_coord.* and coord <= self.max_coord.*;
+            if (inrange and coord > self.pos.coord and (self.state != .limited or self.dir == .backward)) {
+                self.dir = .forward;
+                self.target_coord = coord;
+                try self.drive.set(.dir_a);
+                self.state = .moving;
+            } else if (inrange and coord < self.pos.coord and (self.state != .limited or self.dir == .forward)) {
+                self.dir = .backward;
+                self.target_coord = coord;
+                try self.drive.set(.dir_b);
+                self.state = .moving;
+            }
+        },
+        .moving => {},
+    }
+}
+
 pub fn stop(self: *Self) !void {
     try self.drive.set(.off);
     switch (self.state) {
@@ -190,10 +210,11 @@ pub fn setOrigin(self: *Self) void {
 }
 
 pub fn begin(self: *Self) !void {
-    if (self.max_bt.is_active) {
+    // if we use the device in simulation mode both are active!
+    if (self.max_bt.is_active and !self.min_bt.is_active) {
         self.state = .limited;
         self.pos.dir = .forward;
-    } else if (self.min_bt.is_active) {
+    } else if (self.min_bt.is_active and !self.max_bt.is_active) {
         self.state = .limited;
         self.pos.dir = .backward;
     }

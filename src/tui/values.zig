@@ -2,7 +2,7 @@ const std = @import("std");
 const assert = std.debug.assert;
 const Value = @import("items.zig").Value;
 const Event = @import("Event.zig");
-
+const range = @import("../range.zig");
 pub const StrValue = struct {
     str: []const u8 = "Test",
     pub fn value(self: *StrValue) Value {
@@ -70,7 +70,8 @@ pub const BulbValue = struct {
     }
 };
 
-pub const IntValue = struct {
+pub const IntValue_ = struct {
+    const Self = @This();
     min: u8 = 0,
     max: u8,
     val: u8,
@@ -79,7 +80,7 @@ pub const IntValue = struct {
     // fn size(max: u8) u8 {
     //     return 1 + if (max > 99) 3 else if (max > 9) 2 else 1;
     // }
-    pub fn value(self: *IntValue) Value {
+    pub fn value(self: *Self) Value {
         return .{
             .rw = .{
                 // .id = self.id,
@@ -90,11 +91,11 @@ pub const IntValue = struct {
         };
     }
     fn get(ctx: *anyopaque) []const u8 {
-        const self: *IntValue = @ptrCast(@alignCast(ctx));
+        const self: *Self = @ptrCast(@alignCast(ctx));
         _ = std.fmt.printInt(&self.buf, self.val, 10, .lower, .{ .alignment = .right, .width = 4 });
         return &self.buf;
     }
-    fn event(self: *IntValue) ?Event {
+    fn event(self: *Self) ?Event {
         if (self.id) |id| {
             return .{ .id = id, .pl = .value };
         } else {
@@ -103,7 +104,7 @@ pub const IntValue = struct {
     }
 
     fn inc(ctx: *anyopaque) ?Event {
-        const self: *IntValue = @ptrCast(@alignCast(ctx));
+        const self: *Self = @ptrCast(@alignCast(ctx));
         if (self.val >= self.max or self.val < self.min) {
             self.val = self.min;
         } else {
@@ -112,7 +113,7 @@ pub const IntValue = struct {
         return self.event();
     }
     fn dec(ctx: *anyopaque) ?Event {
-        const self: *IntValue = @ptrCast(@alignCast(ctx));
+        const self: *Self = @ptrCast(@alignCast(ctx));
         if (self.val > self.max or self.val <= self.min) {
             self.val = self.max;
         } else {
@@ -122,14 +123,17 @@ pub const IntValue = struct {
     }
 };
 
-pub fn RefIntValue(comptime T: type, comptime size: u8, comptime base: u8) type {
+pub fn IntValue(comptime T: type, comptime R: type, comptime size: u8, comptime base: u8) type {
     return struct {
         const Self = @This();
-        min: T,
-        max: T,
-        ref: *T,
+        const V = switch (@typeInfo(T)) {
+            .pointer => |p| p.child,
+            else => T,
+        };
+        range: range.Range(R),
+        val: T,
         id: ?u16 = null,
-        buf: [4]u8 = [_]u8{' '} ** size,
+        buf: [size]u8 = [_]u8{' '} ** size,
         pub fn value(self: *Self) Value {
             return .{
                 .rw = .{
@@ -141,7 +145,11 @@ pub fn RefIntValue(comptime T: type, comptime size: u8, comptime base: u8) type 
         }
         fn get(ctx: *anyopaque) []const u8 {
             const self: *Self = @ptrCast(@alignCast(ctx));
-            _ = std.fmt.printInt(&self.buf, self.ref.*, base, .lower, .{ .alignment = .right, .width = size });
+            const v = switch (@typeInfo(T)) {
+                .pointer => self.val.*,
+                else => self.val,
+            };
+            _ = std.fmt.printInt(&self.buf, v, base, .lower, .{ .alignment = .right, .width = size });
             return &self.buf;
         }
         fn event(self: *Self) ?Event {
@@ -154,19 +162,49 @@ pub fn RefIntValue(comptime T: type, comptime size: u8, comptime base: u8) type 
 
         fn inc(ctx: *anyopaque) ?Event {
             const self: *Self = @ptrCast(@alignCast(ctx));
-            if (self.ref.* >= self.max or self.ref.* < self.min) {
-                self.ref.* = self.min;
-            } else {
-                self.ref.* += 1;
+            const min, const max = switch (@typeInfo(R)) {
+                .pointer => .{ self.range.min.*, self.range.max.* },
+                else => .{ self.range.min, self.range.max },
+            };
+            switch (@typeInfo(T)) {
+                .pointer => {
+                    if (self.val.* >= max or self.val.* < min) {
+                        self.val.* = min;
+                    } else {
+                        self.val.* += 1;
+                    }
+                },
+                else => {
+                    if (self.val >= max or self.val < min) {
+                        self.val = min;
+                    } else {
+                        self.val += 1;
+                    }
+                },
             }
             return self.event();
         }
         fn dec(ctx: *anyopaque) ?Event {
             const self: *Self = @ptrCast(@alignCast(ctx));
-            if (self.ref.* > self.max or self.ref.* <= self.min) {
-                self.ref.* = self.max;
-            } else {
-                self.ref.* -= 1;
+            const min, const max = switch (@typeInfo(R)) {
+                .pointer => .{ self.range.min.*, self.range.max.* },
+                else => .{ self.range.min, self.range.max },
+            };
+            switch (@typeInfo(T)) {
+                .pointer => {
+                    if (self.val.* > max or self.val.* <= min) {
+                        self.val.* = max;
+                    } else {
+                        self.val.* -= 1;
+                    }
+                },
+                else => {
+                    if (self.val > max or self.val <= min) {
+                        self.val = max;
+                    } else {
+                        self.val -= 1;
+                    }
+                },
             }
             return self.event();
         }

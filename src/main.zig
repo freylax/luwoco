@@ -6,15 +6,16 @@ const Drive = @import("Drive.zig");
 const Relais = @import("Relais.zig");
 const Buttons = @import("tui/Buttons.zig");
 const DriveControlUI = @import("DriveControlUI.zig");
+const PosControlUI = @import("PosControlUI.zig");
 const Tree = @import("tui/Tree.zig");
 const TUI = @import("TUI.zig");
 const IO = @import("IO.zig");
-
+const areaUI = @import("areaUI.zig");
 const Item = Tree.Item;
 const values = @import("tui/values.zig");
 const uib = @import("ui_buttons.zig");
 const IntValue = values.IntValue;
-const RefIntValue = values.RefIntValue;
+// const RefIntValue = values.RefIntValue;
 const RefBoolValue = values.RefBoolValue;
 const RefPushButton = values.RefPushButton;
 const PushButton = values.PushButton;
@@ -47,9 +48,6 @@ const EventId = enum(u16) {
     config,
     back_light,
     use_simulator,
-    min_max_x,
-    min_max_y,
-    // save_config,
     drive_x,
     drive_y,
     relais_a,
@@ -84,13 +82,39 @@ const button_masks = blk: {
     break :blk a;
 };
 
-const RefU8Val = RefIntValue(u8, 4, 10);
-var back_light = RefU8Val{ .min = 0, .max = 255, .ref = &Config.values.back_light, .id = EventId.back_light.id() };
-const RefI8Val = RefIntValue(i8, 4, 10);
-var min_x = RefI8Val{ .min = -10, .max = 0, .ref = &Config.values.min_x, .id = EventId.min_max_x.id() };
-var max_x = RefI8Val{ .min = 0, .max = 10, .ref = &Config.values.max_x, .id = EventId.min_max_x.id() };
-var min_y = RefI8Val{ .min = -10, .max = 0, .ref = &Config.values.min_y, .id = EventId.min_max_y.id() };
-var max_y = RefI8Val{ .min = 0, .max = 10, .ref = &Config.values.max_y, .id = EventId.min_max_y.id() };
+var back_light = IntValue(*u8, u8, 4, 10){ .range = .{ .min = 0, .max = 255 }, .val = &Config.values.back_light, .id = EventId.back_light.id() };
+
+const AreaUIV = areaUI.AreaUI(*i8, i8, 3);
+var allowed_area = aablk: {
+    const a = &Config.values.allowed_area;
+    break :aablk AreaUIV.create(
+        .{
+            .x = .{ .min = &a.x.min, .max = &a.x.max },
+            .y = .{ .min = &a.y.min, .max = &a.y.max },
+        },
+        .{ .min = -10, .max = 0 },
+        .{ .min = 0, .max = 10 },
+        .{ .min = -5, .max = 0 },
+        .{ .min = 0, .max = 5 },
+    );
+};
+const AreaUIR = areaUI.AreaUI(*i8, *const i8, 3);
+var work_area = wablk: {
+    const aa = &Config.values.allowed_area;
+    const wa = &Config.values.work_area;
+    const zero: i8 = 0;
+    break :wablk AreaUIR.create(
+        .{
+            .x = .{ .min = &wa.x.min, .max = &wa.x.max },
+            .y = .{ .min = &wa.y.min, .max = &wa.y.max },
+        },
+        .{ .min = &aa.x.min, .max = &zero },
+        .{ .min = &zero, .max = &aa.x.max },
+        .{ .min = &aa.y.min, .max = &zero },
+        .{ .min = &zero, .max = &aa.y.max },
+    );
+};
+
 var use_simulator = RefBoolValue{ .ref = &IO.use_simulator, .id = EventId.use_simulator.id() };
 
 var pb_save_config = ClickButton(Config){
@@ -143,6 +167,7 @@ var pb_relais_b = RefPushButton(Relais.State){
 
 var drive_x_ui = DriveControlUI.create(&IO.drive_x_control);
 var drive_y_ui = DriveControlUI.create(&IO.drive_y_control);
+var pos_ui = PosControlUI.create(&IO.pos_control, &IO.drive_x_control, &IO.drive_y_control);
 
 const items: []const Item = &.{
     .{ .popup = .{
@@ -151,17 +176,22 @@ const items: []const Item = &.{
         .items = &.{
             .{ .label = "Save: " },
             .{ .value = pb_save_config.value(.{}) },
-            .{ .label = "\nmin_x:" },
-            .{ .value = min_x.value() },
-            .{ .label = "\nmax_x:" },
-            .{ .value = max_x.value() },
-            .{ .label = "\nmin_y:" },
-            .{ .value = min_y.value() },
-            .{ .label = "\nmax_y:" },
-            .{ .value = max_y.value() },
-            .{ .label = "\nBacklight:" },
+            .{ .label = "\n" },
+            .{ .popup = .{
+                .str = " work area\n",
+                .items = work_area.ui(),
+            } },
+            .{ .popup = .{
+                .str = " allowed area\n",
+                .items = allowed_area.ui(),
+            } },
+            .{ .label = "Backlight:" },
             .{ .value = back_light.value() },
         },
+    } },
+    .{ .popup = .{
+        .str = " pos control\n",
+        .items = pos_ui.ui(),
     } },
     .{ .popup = .{
         .str = " output test\n",
@@ -207,7 +237,7 @@ const items: []const Item = &.{
             .str = " drive y\n",
             .items = drive_y_ui.ui(),
         } },
-        .{ .label = "\nsimulator:" },
+        .{ .label = "simulator:" },
         .{ .value = use_simulator.value() },
     } } },
     .{ .popup = .{
@@ -306,8 +336,9 @@ fn simulator_interrupt_handler() callconv(.c) void {
     const t = time.get_time_since_boot();
     IO.x_sim.sample(t); // set state of input devices
     IO.y_sim.sample(t);
-    if (IO.drive_x_control.sample(t)) {} else |_| {}
-    if (IO.drive_y_control.sample(t)) {} else |_| {}
+    // if (IO.drive_x_control.sample(t)) {} else |_| {}
+    // if (IO.drive_y_control.sample(t)) {} else |_| {}
+    if (IO.pos_control.sample(t)) {} else |_| {}
 
     timer0.clear_interrupt(.alarm0);
     // set alarm for 1 second
@@ -323,8 +354,9 @@ pub fn switch_interrupt_handler() callconv(.c) void {
     // confirm the interrupt
     IO_BANK0.INTR2.write(r);
     const t = time.get_time_since_boot();
-    if (IO.drive_x_control.sample(t)) {} else |_| {}
-    if (IO.drive_y_control.sample(t)) {} else |_| {}
+    // if (IO.drive_x_control.sample(t)) {} else |_| {}
+    // if (IO.drive_y_control.sample(t)) {} else |_| {}
+    if (IO.pos_control.sample(t)) {} else |_| {}
     // intr_reg.val = @bitCast(r);
 }
 
@@ -412,13 +444,11 @@ pub fn main() !void {
                 },
                 .back_light => {
                     log.info("back_light event", .{});
-                    _ = lcd.setBackLight(back_light.ref.*);
+                    _ = lcd.setBackLight(back_light.val.*);
                 },
                 .use_simulator => {
                     switch_simulator_interrupt();
                 },
-                .min_max_x => {},
-                .min_max_y => {},
                 // .save_config => {
                 //     switch (ev.pl.tui.button) {
                 //         true => {

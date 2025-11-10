@@ -6,7 +6,8 @@ const rp2xxx = microzig.hal;
 const flash = rp2xxx.flash;
 
 const FlashJournal = @import("FlashJournal.zig");
-
+// const Range = @import("Range.zig");
+const Area = @import("area.zig").Area;
 const Self = @This();
 const my_size: u8 = @sizeOf(Self);
 
@@ -15,16 +16,18 @@ const pages = flash.SECTOR_SIZE / flash.PAGE_SIZE; // 4096 / 256 = 16 pages
 const flash_target_offset = 0x20_0000 - flash.SECTOR_SIZE; // 2 MB Flash
 const flash_target_contents = @as([*]const u8, @ptrFromInt(flash.XIP_BASE + flash_target_offset));
 // this has to be adjusted if more entries are populated
-const max_size: u8 = 6;
+const max_size: u8 = 10;
 
 pub var values: Self = Self{};
 
+// size: 1
 back_light: u8 = 0,
-min_x: i8 = -5,
-max_x: i8 = 5,
-min_y: i8 = -3,
-max_y: i8 = 3,
-use_simulator: bool = false,
+// size: 4
+allowed_area: Area(i8) = .{ .x = .{ .min = -5, .max = 5 }, .y = .{ .min = -3, .max = 3 } },
+// size: 4
+work_area: Area(i8) = .{ .x = .{ .min = -2, .max = 2 }, .y = .{ .min = -2, .max = 2 } },
+// size: 1
+waiting_time_xs: u8 = 0, // six seconds waiting_time, 10xs is 1 minute
 
 fn write_page(page_idx: usize, page: []const u8) void {
     comptime assert(max_size >= my_size);
