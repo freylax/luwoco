@@ -115,6 +115,18 @@ var work_area = wablk: {
     );
 };
 
+var simulator_sampling_time_cs = IntValue(*u8, u8, 4, 10){
+    .range = .{ .min = 0, .max = 255 },
+    .val = &Config.values.simulator_sampling_time_cs,
+};
+var simulator_switching_time_cs = IntValue(*u8, u8, 4, 10){
+    .range = .{ .min = 0, .max = 255 },
+    .val = &Config.values.simulator_switching_time_cs,
+};
+var simulator_driving_time_ds = IntValue(*u8, u8, 4, 10){
+    .range = .{ .min = 0, .max = 255 },
+    .val = &Config.values.simulator_driving_time_ds,
+};
 var use_simulator = RefBoolValue{ .ref = &IO.use_simulator, .id = EventId.use_simulator.id() };
 
 var pb_save_config = ClickButton(Config){
@@ -184,6 +196,13 @@ const items: []const Item = &.{
             .{ .popup = .{
                 .str = " allowed area\n",
                 .items = allowed_area.ui(),
+            } },
+            .{ .popup = .{
+                .str = " simulator\n",
+                .items = &.{
+                    .{ .label = "sampling time cs\n" },
+                    .{ .value = simulator_sampling_time_cs.value() },
+                },
             } },
             .{ .label = "Backlight:" },
             .{ .value = back_light.value() },
@@ -336,13 +355,12 @@ fn simulator_interrupt_handler() callconv(.c) void {
     const t = time.get_time_since_boot();
     IO.x_sim.sample(t); // set state of input devices
     IO.y_sim.sample(t);
-    // if (IO.drive_x_control.sample(t)) {} else |_| {}
-    // if (IO.drive_y_control.sample(t)) {} else |_| {}
     if (IO.pos_control.sample(t)) {} else |_| {}
 
     timer0.clear_interrupt(.alarm0);
-    // set alarm for 1 second
-    timer0.schedule_alarm(.alarm0, timer0.read_low() +% 1_000_000);
+    // set alarm
+    const dt_us = @as(u32, Config.values.simulator_sampling_time_cs) * 10_000;
+    timer0.schedule_alarm(.alarm0, timer0.read_low() +% dt_us);
 }
 
 pub fn switch_interrupt_handler() callconv(.c) void {
@@ -354,10 +372,7 @@ pub fn switch_interrupt_handler() callconv(.c) void {
     // confirm the interrupt
     IO_BANK0.INTR2.write(r);
     const t = time.get_time_since_boot();
-    // if (IO.drive_x_control.sample(t)) {} else |_| {}
-    // if (IO.drive_y_control.sample(t)) {} else |_| {}
     if (IO.pos_control.sample(t)) {} else |_| {}
-    // intr_reg.val = @bitCast(r);
 }
 
 // pub fn set_alarm(us: u32) void {

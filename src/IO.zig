@@ -64,8 +64,14 @@ pub const i2c0 = rp2xxx.i2c.instance.num(0);
 pub var use_simulator: bool = false;
 
 pub var i2c_device = I2C_Device.init(i2c0, null);
-pub var x_sim = MotionSimulator{};
-pub var y_sim = MotionSimulator{};
+pub var x_sim = MotionSimulator{
+    .switching_time_cs = &Config.values.simulator_switching_time_cs,
+    .driving_time_ds = &Config.values.simulator_driving_time_ds,
+};
+pub var y_sim = MotionSimulator{
+    .switching_time_cs = &Config.values.simulator_switching_time_cs,
+    .driving_time_ds = &Config.values.simulator_driving_time_ds,
+};
 pub var pos_x_pos = SampleButton{
     .pin = iod.pos_x_pos.digital_io(),
     .active = .low,

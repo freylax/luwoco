@@ -18,8 +18,8 @@ pub const Position = struct {
     dir: Direction = .unspec,
 };
 
-const switching_time: time.Duration = .from_ms(100); // a tenst of  second
-const driving_time: time.Duration = .from_ms(3000); // three seconds
+switching_time_cs: *u8,
+driving_time_ds: *u8,
 
 min_pin: IOState = .low,
 max_pin: IOState = .low,
@@ -65,6 +65,7 @@ pub fn sample(self: *Self, sample_time: time.Absolute) void {
                     const dt = sample_time.diff(self.last_change);
                     switch (self.pos.dev) {
                         .exact => {
+                            const switching_time: time.Duration = .from_ms(self.switching_time_cs.* * 10);
                             if (switching_time.less_than(dt)) {
                                 self.pos.dev = .coarse;
                                 self.pos_pin = .low;
@@ -72,6 +73,7 @@ pub fn sample(self: *Self, sample_time: time.Absolute) void {
                             }
                         },
                         .coarse => {
+                            const driving_time: time.Duration = .from_ms(self.driving_time_ds.* * 100);
                             if (driving_time.less_than(dt)) {
                                 // we arrive at the next coord
                                 self.pos.dev = .exact;
