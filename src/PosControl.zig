@@ -131,6 +131,7 @@ pub fn start(self: *Self) !void {
                 try dy.goto(wa.y.min.*);
             }
             self.state = .moving;
+            self.axis = .xy;
         },
         else => {},
     }

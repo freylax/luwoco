@@ -16,20 +16,23 @@ const pages = flash.SECTOR_SIZE / flash.PAGE_SIZE; // 4096 / 256 = 16 pages
 const flash_target_offset = 0x20_0000 - flash.SECTOR_SIZE; // 2 MB Flash
 const flash_target_contents = @as([*]const u8, @ptrFromInt(flash.XIP_BASE + flash_target_offset));
 // this has to be adjusted if more entries are populated
-const max_size: u8 = 14;
+const max_size: u8 = 13;
 
 pub var values: Self = Self{};
 
-// size: 1
+// size: 1  1
 back_light: u8 = 0,
-// size: 4
+// size: 4  5
 allowed_area: Area(i8) = .{ .x = .{ .min = -5, .max = 5 }, .y = .{ .min = -3, .max = 3 } },
-// size: 4
+// size: 4  9
 work_area: Area(i8) = .{ .x = .{ .min = -2, .max = 2 }, .y = .{ .min = -2, .max = 2 } },
-// size: 1
+// size: 1  10
 waiting_time_xs: u8 = 0, // six seconds waiting_time, 10xs is 1 minute
+// size: 1  11
 simulator_sampling_time_cs: u8 = 10, // in centi seconds
+// size: 1  12
 simulator_switching_time_cs: u8 = 10,
+// size: 1  13
 simulator_driving_time_ds: u8 = 2, // deci seconds
 
 fn write_page(page_idx: usize, page: []const u8) void {

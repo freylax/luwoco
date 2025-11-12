@@ -200,8 +200,12 @@ const items: []const Item = &.{
             .{ .popup = .{
                 .str = " simulator\n",
                 .items = &.{
-                    .{ .label = "sampling time cs\n" },
+                    .{ .label = "samp cs:" },
                     .{ .value = simulator_sampling_time_cs.value() },
+                    .{ .label = "\nswit cs:" },
+                    .{ .value = simulator_switching_time_cs.value() },
+                    .{ .label = "\ndriv ds:" },
+                    .{ .value = simulator_driving_time_ds.value() },
                 },
             } },
             .{ .label = "Backlight:" },
@@ -342,8 +346,9 @@ fn switch_simulator_interrupt() void {
     if (IO.use_simulator) {
         microzig.interrupt.enable(.TIMER_IRQ_0);
         timer0.set_interrupt_enabled(.alarm0, true);
-        // set alarm for 1 second
-        timer0.schedule_alarm(.alarm0, timer0.read_low() +% 1_000_000);
+        // set alarm
+        const dt_us = @as(u32, Config.values.simulator_sampling_time_cs) *| 10_000;
+        timer0.schedule_alarm(.alarm0, timer0.read_low() +% dt_us);
     } else {
         timer0.set_interrupt_enabled(.alarm0, false);
     }
@@ -359,7 +364,7 @@ fn simulator_interrupt_handler() callconv(.c) void {
 
     timer0.clear_interrupt(.alarm0);
     // set alarm
-    const dt_us = @as(u32, Config.values.simulator_sampling_time_cs) * 10_000;
+    const dt_us = @as(u32, Config.values.simulator_sampling_time_cs) *| 10_000;
     timer0.schedule_alarm(.alarm0, timer0.read_low() +% dt_us);
 }
 

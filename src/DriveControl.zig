@@ -37,12 +37,14 @@ pub fn sample(self: *Self, sample_time: time.Absolute) !void {
     const max_ev = try self.max_bt.sample(sample_time);
     const pos_ev = try self.pos_bt.sample(sample_time);
     if (min_ev == .changed_to_active) {
+        // std.log.info("dc:sample min_ev changed to active", .{});
         try self.drive.set(.off);
         self.state = .limited;
         self.pos.dir = .backward;
         return;
     }
     if (max_ev == .changed_to_active) {
+        // std.log.info("dc:sample max_ev changed to active", .{});
         try self.drive.set(.off);
         self.state = .limited;
         self.pos.dir = .forward;

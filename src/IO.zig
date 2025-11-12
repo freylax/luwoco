@@ -67,10 +67,20 @@ pub var i2c_device = I2C_Device.init(i2c0, null);
 pub var x_sim = MotionSimulator{
     .switching_time_cs = &Config.values.simulator_switching_time_cs,
     .driving_time_ds = &Config.values.simulator_driving_time_ds,
+    .active = .low,
+    .inactive = .high,
+    .min_pin = .high,
+    .max_pin = .high,
+    .pos_pin = .low,
 };
 pub var y_sim = MotionSimulator{
     .switching_time_cs = &Config.values.simulator_switching_time_cs,
     .driving_time_ds = &Config.values.simulator_driving_time_ds,
+    .active = .low,
+    .inactive = .high,
+    .min_pin = .high,
+    .max_pin = .high,
+    .pos_pin = .low,
 };
 pub var pos_x_pos = SampleButton{
     .pin = iod.pos_x_pos.digital_io(),

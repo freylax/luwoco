@@ -20,10 +20,11 @@ pub const Position = struct {
 
 switching_time_cs: *u8,
 driving_time_ds: *u8,
-
-min_pin: IOState = .low,
-max_pin: IOState = .low,
-pos_pin: IOState = .low,
+active: IOState,
+inactive: IOState,
+min_pin: IOState,
+max_pin: IOState,
+pos_pin: IOState,
 enable_pin: IOState = .low,
 dir_a_pin: IOState = .low,
 dir_b_pin: IOState = .low,
@@ -65,19 +66,19 @@ pub fn sample(self: *Self, sample_time: time.Absolute) void {
                     const dt = sample_time.diff(self.last_change);
                     switch (self.pos.dev) {
                         .exact => {
-                            const switching_time: time.Duration = .from_ms(self.switching_time_cs.* * 10);
+                            const switching_time: time.Duration = .from_ms(@as(u64, self.switching_time_cs.*) *| 10);
                             if (switching_time.less_than(dt)) {
                                 self.pos.dev = .coarse;
-                                self.pos_pin = .low;
+                                self.pos_pin = self.inactive;
                                 self.last_change = sample_time;
                             }
                         },
                         .coarse => {
-                            const driving_time: time.Duration = .from_ms(self.driving_time_ds.* * 100);
+                            const driving_time: time.Duration = .from_ms(@as(u64, self.driving_time_ds.*) *| 100);
                             if (driving_time.less_than(dt)) {
                                 // we arrive at the next coord
                                 self.pos.dev = .exact;
-                                self.pos_pin = .high;
+                                self.pos_pin = self.active;
                                 self.last_change = sample_time;
                                 if (self.dir_a_pin == .high) {
                                     self.pos.coord += 1;
