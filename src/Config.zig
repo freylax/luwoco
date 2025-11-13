@@ -27,7 +27,7 @@ allowed_area: Area(i8) = .{ .x = .{ .min = -5, .max = 5 }, .y = .{ .min = -3, .m
 // size: 4  9
 work_area: Area(i8) = .{ .x = .{ .min = -2, .max = 2 }, .y = .{ .min = -2, .max = 2 } },
 // size: 1  10
-waiting_time_xs: u8 = 0, // six seconds waiting_time, 10xs is 1 minute
+cook_time_xs: u8 = 0, // six seconds cook_time, 10xs is 1 minute
 // size: 1  11
 simulator_sampling_time_cs: u8 = 10, // in centi seconds
 // size: 1  12

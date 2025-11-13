@@ -13,12 +13,12 @@ pub const State = enum {
     finished,
     paused,
     moving,
-    waiting,
+    cooking,
 };
 
 drive_x_control: *DriveControl,
 drive_y_control: *DriveControl,
-waiting_time_xs: *u8, // waiting time in six seconds
+cooking_time_xs: *u8, // cooking time in six seconds
 work_area: Area,
 
 x_dir: Dir = .forward,
@@ -26,6 +26,8 @@ y_dir: Dir = .forward,
 axis: Axis = .xy,
 
 steps: u16 = 0,
+cook_timer_pos_xs: u8 = 0,
+cook_start: time.Absolute = .from_us(0),
 
 state: State = .finished,
 
@@ -42,7 +44,8 @@ pub fn sample(self: *Self, sample_time: time.Absolute) !void {
                     // initial pos
                     if (dx.state == .stoped and dy.state == .stoped) {
                         self.axis = .x;
-                        self.state = .waiting;
+                        self.state = .cooking;
+                        self.cook_start = sample_time;
                     }
                 },
                 .x => {
@@ -61,18 +64,25 @@ pub fn sample(self: *Self, sample_time: time.Absolute) !void {
                                 }
                             },
                         }
-                        self.state = .waiting;
+                        self.state = .cooking;
+                        self.cook_start = sample_time;
                     }
                 },
                 .y => {
                     if (dy.state == .stoped) {
                         self.axis = .x;
-                        self.state = .waiting;
+                        self.state = .cooking;
+                        self.cook_start = sample_time;
                     }
                 },
             }
         },
-        .waiting => {
+        .cooking => {
+            const cook_time_ms = time.Duration.from_ms(@as(u64, self.cooking_time_xs.*) *| 6_000);
+            const time_elapsed = sample_time.diff(self.cook_start);
+            if (cook_time_ms.less_than(time_elapsed)) {
+                return;
+            }
             if (self.steps == 1) {
                 self.state = .finished;
             } else {

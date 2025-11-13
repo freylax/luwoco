@@ -84,6 +84,8 @@ const button_masks = blk: {
 
 var back_light = IntValue(*u8, u8, 4, 10){ .range = .{ .min = 0, .max = 255 }, .val = &Config.values.back_light, .id = EventId.back_light.id() };
 
+var cook_time = IntValue(*u8, u8, 4, 10){ .range = .{ .min = 0, .max = 255 }, .val = &Config.values.cook_time_xs };
+
 const AreaUIV = areaUI.AreaUI(*i8, i8, 3);
 var allowed_area = aablk: {
     const a = &Config.values.allowed_area;
@@ -197,6 +199,9 @@ const items: []const Item = &.{
                 .str = " allowed area\n",
                 .items = allowed_area.ui(),
             } },
+            .{ .label = "Cookt xs:" },
+            .{ .value = cook_time.value() },
+            .{ .label = "\n" },
             .{ .popup = .{
                 .str = " simulator\n",
                 .items = &.{

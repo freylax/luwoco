@@ -158,7 +158,7 @@ pub var drive_y_control = DriveControl{
 pub var pos_control = PosControl{
     .drive_x_control = &drive_x_control,
     .drive_y_control = &drive_y_control,
-    .waiting_time_xs = &Config.values.waiting_time_xs,
+    .cooking_time_xs = &Config.values.cook_time_xs,
     .work_area = wablk: {
         const wa = &Config.values.work_area;
         break :wablk .{
