@@ -10,6 +10,7 @@ pub const State = enum {
     stoped,
     limited,
     moving,
+    paused,
 };
 
 pub const Deviation = enum(u2) { exact, small, coarse };
@@ -102,7 +103,7 @@ pub fn sample(self: *Self, sample_time: time.Absolute) !void {
                         self.state = .limited;
                     }
                 },
-                .stoped => {
+                .stoped, .paused => {
                     // a backslide of the switch
                     p.dev = .exact;
                 },
@@ -116,7 +117,7 @@ pub fn sample(self: *Self, sample_time: time.Absolute) !void {
                     p.dir = self.dir;
                     p.dev = .coarse;
                 },
-                .stoped, .limited => {
+                .stoped, .paused, .limited => {
                     p.dev = .small;
                 },
             }
@@ -126,7 +127,7 @@ pub fn sample(self: *Self, sample_time: time.Absolute) !void {
 }
 pub fn stepForward(self: *Self) !void {
     switch (self.state) {
-        .stoped => {
+        .stoped, .paused => {
             self.dir = .forward;
             self.target_coord = self.pos.coord + 1;
             try self.drive.set(.dir_a);
@@ -149,7 +150,7 @@ pub fn stepForward(self: *Self) !void {
 
 pub fn stepBackward(self: *Self) !void {
     switch (self.state) {
-        .stoped => {
+        .stoped, .paused => {
             self.dir = .backward;
             self.target_coord = self.pos.coord - 1;
             try self.drive.set(.dir_b);
@@ -172,7 +173,7 @@ pub fn stepBackward(self: *Self) !void {
 
 pub fn goto(self: *Self, coord: i8) !void {
     switch (self.state) {
-        .stoped, .limited => {
+        .paused, .stoped, .limited => {
             const inrange = coord >= self.min_coord.* and coord <= self.max_coord.*;
             if (inrange and coord > self.pos.coord and (self.state != .limited or self.dir == .backward)) {
                 self.dir = .forward;
@@ -191,11 +192,39 @@ pub fn goto(self: *Self, coord: i8) !void {
 }
 
 pub fn stop(self: *Self) !void {
-    try self.drive.set(.off);
     switch (self.state) {
         .moving => {
             try self.drive.set(.off);
             self.state = .stoped;
+        },
+        else => {},
+    }
+}
+
+pub fn pause(self: *Self) !void {
+    switch (self.state) {
+        .moving => {
+            try self.drive.set(.off);
+            self.state = .paused;
+        },
+        else => {},
+    }
+}
+
+pub fn @"continue"(self: *Self) !void {
+    switch (self.state) {
+        .paused => {
+            switch (self.dir) {
+                .forward => {
+                    try self.drive.set(.dir_a);
+                    self.state = .moving;
+                },
+                .backward => {
+                    try self.drive.set(.dir_b);
+                    self.state = .moving;
+                },
+                .unspec => {},
+            }
         },
         else => {},
     }

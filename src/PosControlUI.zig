@@ -12,9 +12,10 @@ const Self = @This();
 const ClickBt = ClickButton(PosControl);
 const IntI8 = RoRefIntValue(i8, 3, 10);
 const IntU16 = RoRefIntValue(u16, 3, 10);
-const State = EnumRefValue(PosControl.State, [_][]const u8{ "fin", "pau", "mov", "cok" });
+const State = EnumRefValue(PosControl.State, [_][]const u8{ "fin", "pam", "pac", "mov", "cok" });
 
 startBt: ClickBt,
+pauseBt: ClickBt,
 pos_x: IntI8,
 pos_y: IntI8,
 steps: IntU16,
@@ -27,6 +28,11 @@ pub fn create(pc: *PosControl, dx: *DriveControl, dy: *DriveControl) Self {
             .ref = pc,
             .enabled = startEnabled,
             .clicked = startClicked,
+        },
+        .pauseBt = .{
+            .ref = pc,
+            .enabled = pauseEnabled,
+            .clicked = pauseClicked,
         },
         .pos_x = .{ .ref = &dx.pos.coord },
         .pos_y = .{ .ref = &dy.pos.coord },
@@ -46,18 +52,29 @@ pub fn ui(self: *Self) []const Item {
         .{ .value = self.pos_y.value() }, // 3
         .{ .label = "\n" },
         .{ .value = self.timer_pos.value() }, // 3
-        .{ .label = " =>" }, // 3
-        .{ .value = self.startBt.value(.{ .db = uib.button2 }) }, // 3
+        .{ .label = " >" }, // 2
+        .{ .value = self.startBt.value(.{ .db = uib.button3 }) }, // 3
+        .{ .label = " =" }, // 2
+        .{ .value = self.pauseBt.value(.{ .db = uib.button4 }) }, // 3
     };
 }
 
 fn startEnabled(pc: *PosControl) bool {
     return switch (pc.state) {
-        .finished => true,
+        .finished, .paused_moving, .paused_cooking => true,
         else => false,
     };
 }
 
 fn startClicked(pc: *PosControl) void {
     pc.start() catch {};
+}
+fn pauseEnabled(pc: *PosControl) bool {
+    return switch (pc.state) {
+        .moving, .cooking => true,
+        else => false,
+    };
+}
+fn pauseClicked(pc: *PosControl) void {
+    pc.pause() catch {};
 }

@@ -10,7 +10,7 @@ const Self = @This();
 
 const ClickBt = ClickButton(DriveControl);
 const Int = RoRefIntValue(i8, 3, 10);
-const State = EnumRefValue(DriveControl.State, [_][]const u8{ "stp", "lim", "mov" });
+const State = EnumRefValue(DriveControl.State, [_][]const u8{ "stp", "lim", "mov", "pau" });
 const Dir = EnumRefValue(DriveControl.Direction, [_][]const u8{ "un", "fw", "bw" });
 const Dev = EnumRefValue(DriveControl.Deviation, [_][]const u8{ "ex", "sm", "co" });
 

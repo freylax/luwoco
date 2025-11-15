@@ -1,5 +1,6 @@
 const microzig = @import("microzig");
 const time = microzig.drivers.time;
+
 const std = @import("std");
 const DriveControl = @import("DriveControl.zig");
 const Area = @import("area.zig").Area(*const i8);
@@ -11,7 +12,8 @@ const Axis = enum { x, y, xy };
 
 pub const State = enum {
     finished,
-    paused,
+    paused_moving,
+    paused_cooking,
     moving,
     cooking,
 };
@@ -26,15 +28,17 @@ y_dir: Dir = .forward,
 axis: Axis = .xy,
 
 steps: u16 = 0,
+cook_timer_pos_us: u64 = 0,
 cook_timer_pos_s: u16 = 0,
-cook_start_pos: time.Absolute = .from_us(0),
+cook_timer_pos_update_us: u64 = 0,
 
 state: State = .finished,
 
 fn start_cooking(self: *Self, sample_time: time.Absolute) void {
     self.state = .cooking;
-    self.cook_start_pos = sample_time;
-    self.cook_timer_pos_s = self.cooking_time_xs.* *| 6;
+    self.cook_timer_pos_us = @as(u64, self.cooking_time_xs.*) *| 6_000_000;
+    self.cook_timer_pos_update_us = sample_time.to_us();
+    self.cook_timer_pos_s = @intCast((self.cook_timer_pos_us + 990_000) / 1_000_000);
 }
 
 pub fn sample(self: *Self, sample_time: time.Absolute) !void {
@@ -81,10 +85,13 @@ pub fn sample(self: *Self, sample_time: time.Absolute) !void {
             }
         },
         .cooking => {
-            const cook_time = time.Duration.from_ms(@as(u64, self.cooking_time_xs.*) *| 6_000);
-            const time_elapsed = sample_time.diff(self.cook_start_pos);
-            self.cook_timer_pos_s = @intCast((cook_time.to_us() -| time_elapsed.to_us() + 990_000) / 1_000_000);
-            if (self.cook_timer_pos_s > 0) {
+            if (self.cook_timer_pos_update_us == 0) {
+                self.cook_timer_pos_update_us = sample_time.to_us();
+            }
+            self.cook_timer_pos_us -|= sample_time.to_us() -| self.cook_timer_pos_update_us;
+            self.cook_timer_pos_s = @intCast((self.cook_timer_pos_us + 990_000) / 1_000_000);
+            self.cook_timer_pos_update_us = sample_time.to_us();
+            if (self.cook_timer_pos_us > 0) {
                 return;
             }
             if (self.steps == 1) {
@@ -146,6 +153,31 @@ pub fn start(self: *Self) !void {
             }
             self.state = .moving;
             self.axis = .xy;
+        },
+        .paused_moving => {
+            try dx.@"continue"();
+            try dy.@"continue"();
+            self.state = .moving;
+        },
+        .paused_cooking => {
+            self.cook_timer_pos_update_us = 0;
+            self.state = .cooking;
+        },
+        else => {},
+    }
+}
+
+pub fn pause(self: *Self) !void {
+    const dx = self.drive_x_control;
+    const dy = self.drive_y_control;
+    switch (self.state) {
+        .moving => {
+            try dx.pause();
+            try dy.pause();
+            self.state = .paused_moving;
+        },
+        .cooking => {
+            self.state = .paused_cooking;
         },
         else => {},
     }
