@@ -3,6 +3,8 @@ const microzig = @import("microzig");
 const hal = microzig.hal;
 const time = hal.time;
 const I2C_Device = microzig.drivers.base.I2C_Device;
+const drivers = microzig.drivers;
+const Digital_IO = drivers.base.Digital_IO;
 const Mutex = hal.mutex.Mutex;
 const assert = std.debug.assert;
 const Display = @import("tui/Display.zig");
@@ -22,6 +24,7 @@ pub fn BufferedLCD(comptime NrOfLines: comptime_int) type {
         const nLines = NrOfLines;
         dev: I2C_Device,
         addr: I2C_Device.Address,
+        reset: Digital_IO,
         mx: Mutex,
         buf: [nLines]Line = [_]Line{Line{}} ** nLines, // buffer for writing, protected by mx
         dBuf: [2][Line.len]u8 = .{.{' '} ** Line.len} ** 2, // the actual displayed chars
@@ -30,6 +33,7 @@ pub fn BufferedLCD(comptime NrOfLines: comptime_int) type {
         cursorLine: u16 = 0,
         cursorCol: u8 = 0,
         cursorSavedChar: u8 = ' ',
+        backLight: u8 = 0,
         lastError: ?Error = null,
         pub fn display(self: *Self) Display {
             return .{
@@ -54,10 +58,11 @@ pub fn BufferedLCD(comptime NrOfLines: comptime_int) type {
             };
         }
 
-        pub fn init(dev: I2C_Device, addr: I2C_Device.Address) Self {
+        pub fn init(dev: I2C_Device, addr: I2C_Device.Address, reset: Digital_IO) Self {
             return Self{
                 .dev = dev,
                 .addr = addr,
+                .reset = reset,
                 .mx = Mutex{},
             };
         }
@@ -159,47 +164,67 @@ pub fn BufferedLCD(comptime NrOfLines: comptime_int) type {
             const self: *Self = @ptrCast(@alignCast(ctx));
             // insert the chars to print/update, all other are zero
             var toPrint: [2][Line.len]u8 = .{.{0} ** Line.len} ** 2;
-            {
-                defer self.mx.unlock();
-                self.mx.lock();
-                for (lines, 0..) |l, i| {
-                    if (l >= nLines) continue;
-                    // check if no modification did happend
-                    const bufl = &self.buf[l];
-                    if (l == self.dLines[i] and bufl.stamp_in == bufl.stamp_out) continue;
-                    // std.log.info(
-                    // "stamps for line {d}: in {d}, out {d}, buf '{s}', dbuf '{s}'",
-                    // .{ l, bufl.stamp_in, bufl.stamp_out, &bufl.buf, &self.dBuf[i] },
-                    // );
+
+            retry: for (0..1) |retry_ctr| {
+                {
+                    defer self.mx.unlock();
+                    self.mx.lock();
+
+                    for (lines, 0..) |l, i| {
+                        if (l >= nLines) continue;
+                        // check if no modification did happend
+                        const bufl = &self.buf[l];
+                        if (retry_ctr == 0 and l == self.dLines[i] and bufl.stamp_in == bufl.stamp_out) continue;
+                        // std.log.info(
+                        // "stamps for line {d}: in {d}, out {d}, buf '{s}', dbuf '{s}'",
+                        // .{ l, bufl.stamp_in, bufl.stamp_out, &bufl.buf, &self.dBuf[i] },
+                        // );
+                        for (0..Line.len) |j| {
+                            // check if chars differ
+                            const c = bufl.buf[j];
+                            if (retry_ctr == 1 or c != self.dBuf[i][j]) {
+                                toPrint[i][j] = c;
+                                self.dBuf[i][j] = c;
+                            }
+                        }
+                        self.dLines[i] = l;
+                        bufl.stamp_out = bufl.stamp_in;
+                    }
+                    // std.log.info("lcd cursor at {d},{d},{any}", .{ self.cursorLine, self.cursorCol, self.cursorOn });
+
+                    // mutex gets released here
+                }
+                // now the time consuming communication with the display
+                for (0..2) |i| {
                     for (0..Line.len) |j| {
-                        // check if chars differ
-                        const c = bufl.buf[j];
-                        if (c != self.dBuf[i][j]) {
-                            toPrint[i][j] = c;
-                            self.dBuf[i][j] = c;
+                        const c = toPrint[i][j];
+                        if (c != 0) {
+                            self.write_datagram(0x61, &.{ @intCast(1 - i), @intCast(j), c }) catch |e| {
+                                if (e == error.DeviceNotPresent and retry_ctr == 0) {
+                                    self.resetDisplay();
+                                    continue :retry;
+                                } else {
+                                    self.lastError = e;
+                                    return null;
+                                }
+                            };
+                            time.sleep_ms(20);
+                            // std.log.info("send at {d},{d} '{c}'", .{ i, j, c });
                         }
                     }
-                    self.dLines[i] = l;
-                    bufl.stamp_out = bufl.stamp_in;
                 }
-                // std.log.info("lcd cursor at {d},{d},{any}", .{ self.cursorLine, self.cursorCol, self.cursorOn });
+                break :retry;
+            }
+        }
 
-                // mutex gets released here
-            }
-            // now the time consuming communication with the display
-            for (0..2) |i| {
-                for (0..Line.len) |j| {
-                    const c = toPrint[i][j];
-                    if (c != 0) {
-                        self.write_datagram(0x61, &.{ @intCast(1 - i), @intCast(j), c }) catch |e| {
-                            self.lastError = e;
-                            return null;
-                        };
-                        time.sleep_ms(20);
-                        // std.log.info("send at {d},{d} '{c}'", .{ i, j, c });
-                    }
-                }
-            }
+        fn resetDisplay(self: *Self) void {
+            std.log.info("LCD: try to reset the Display", .{});
+            self.reset.write(.low) catch {};
+            time.sleep_ms(20);
+            self.reset.write(.high) catch {};
+            time.sleep_ms(500);
+            self.writeBackLight() catch {};
+            time.sleep_ms(20);
         }
 
         pub fn readButtons(ctx: *anyopaque) ?u8 {
@@ -213,11 +238,16 @@ pub fn BufferedLCD(comptime NrOfLines: comptime_int) type {
         }
 
         pub fn setBackLight(self: *Self, val: u8) ?void {
-            self.write_datagram(0x62, &.{val}) catch |e| {
+            self.backLight = val;
+            self.writeBackLight() catch |e| {
                 self.lastError = e;
                 return null;
             };
             time.sleep_ms(20);
+        }
+
+        fn writeBackLight(self: *Self) Error!void {
+            try self.write_datagram(0x62, &.{self.backLight});
         }
 
         /// Sends command data to the lcd

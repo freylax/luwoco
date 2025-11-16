@@ -182,3 +182,13 @@ pub fn pause(self: *Self) !void {
         else => {},
     }
 }
+
+pub fn reset(self: *Self) !void {
+    switch (self.state) {
+        .paused_moving, .paused_cooking => {
+            self.steps = 0;
+            self.state = .finished;
+        },
+        else => {},
+    }
+}

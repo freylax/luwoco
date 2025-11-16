@@ -20,6 +20,7 @@ const pin_config = rp2xxx.pins.GlobalConfiguration{
     .GPIO0 = .{ .name = "gpio0", .function = .UART0_TX },
     .GPIO4 = .{ .name = "sda", .function = .I2C0_SDA, .slew_rate = .slow, .schmitt_trigger = .enabled },
     .GPIO5 = .{ .name = "scl", .function = .I2C0_SCL, .slew_rate = .slow, .schmitt_trigger = .enabled },
+    .GPIO6 = .{ .name = "lcd_reset", .direction = .out },
     .GPIO8 = .{ .name = "drive_x_enable", .direction = .out },
     .GPIO9 = .{ .name = "drive_x_dir_a", .direction = .out },
     .GPIO10 = .{ .name = "drive_x_dir_b", .direction = .out },
@@ -40,6 +41,7 @@ const pin_config = rp2xxx.pins.GlobalConfiguration{
 const pins = pin_config.pins();
 
 const iod = struct {
+    var lcd_reset = GPIO_Device.init(pins.lcd_reset);
     var pos_x_pos = GPIO_Device.init(pins.pos_x_pos);
     var pos_x_min = GPIO_Device.init(pins.pos_x_min);
     var pos_x_max = GPIO_Device.init(pins.pos_x_max);
@@ -59,7 +61,7 @@ const iod = struct {
 pub const uart0 = rp2xxx.uart.instance.num(0);
 const baud_rate = 115200;
 pub const i2c0 = rp2xxx.i2c.instance.num(0);
-
+pub var lcd_reset = iod.lcd_reset.digital_io();
 // not io related, but let live here for now.
 pub var use_simulator: bool = false;
 
@@ -197,6 +199,7 @@ pub fn init() !void {
 }
 
 pub fn begin() !void {
+    try lcd_reset.write(.high);
     try drive_x.begin();
     try drive_y.begin();
 

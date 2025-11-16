@@ -39,7 +39,7 @@ pub const microzig_options = microzig.Options{
     .log_level = .info,
     .logFn = rp2xxx.uart.log,
     .interrupts = .{
-        .TIMER_IRQ_0 = .{ .c = simulator_interrupt_handler },
+        .TIMER_IRQ_0 = .{ .c = timer_interrupt_handler },
         .IO_IRQ_BANK0 = .{ .c = switch_interrupt_handler },
     },
 };
@@ -47,7 +47,7 @@ pub const microzig_options = microzig.Options{
 const EventId = enum(u16) {
     config,
     back_light,
-    use_simulator,
+    set_timer_interrupt,
     drive_x,
     drive_y,
     relais_a,
@@ -117,8 +117,12 @@ var work_area = wablk: {
     );
 };
 
+var timer_sampling_time_cs = IntValue(*u8, u8, 4, 10){
+    .range = .{ .min = 1, .max = 255 },
+    .val = &Config.values.timer_sampling_time_cs,
+};
 var simulator_sampling_time_cs = IntValue(*u8, u8, 4, 10){
-    .range = .{ .min = 0, .max = 255 },
+    .range = .{ .min = 1, .max = 255 },
     .val = &Config.values.simulator_sampling_time_cs,
 };
 var simulator_switching_time_cs = IntValue(*u8, u8, 4, 10){
@@ -129,7 +133,7 @@ var simulator_driving_time_ds = IntValue(*u8, u8, 4, 10){
     .range = .{ .min = 0, .max = 255 },
     .val = &Config.values.simulator_driving_time_ds,
 };
-var use_simulator = RefBoolValue{ .ref = &IO.use_simulator, .id = EventId.use_simulator.id() };
+var use_simulator = RefBoolValue{ .ref = &IO.use_simulator, .id = EventId.set_timer_interrupt.id() };
 
 var pb_save_config = ClickButton(Config){
     .ref = &Config.values,
@@ -201,6 +205,9 @@ const items: []const Item = &.{
             } },
             .{ .label = "Cookt xs:" },
             .{ .value = cook_time.value() },
+            .{ .label = "\n" },
+            .{ .label = "Timer cs:" },
+            .{ .value = timer_sampling_time_cs.value() },
             .{ .label = "\n" },
             .{ .popup = .{
                 .str = " simulator\n",
@@ -347,24 +354,34 @@ const items: []const Item = &.{
     },
 };
 
-fn switch_simulator_interrupt() void {
+fn set_timer_interrupt() void {
     if (IO.use_simulator) {
         microzig.interrupt.enable(.TIMER_IRQ_0);
         timer0.set_interrupt_enabled(.alarm0, true);
         // set alarm
-        const dt_us = @as(u32, Config.values.simulator_sampling_time_cs) *| 10_000;
+        const dt_us = @as(u32, @max(Config.values.simulator_sampling_time_cs, 1)) *| 10_000;
         timer0.schedule_alarm(.alarm0, timer0.read_low() +% dt_us);
     } else {
-        timer0.set_interrupt_enabled(.alarm0, false);
+        // switch (IO.pos_control.state) {
+        // .moving, .cooking => {
+        const dt_us = @as(u32, @max(Config.values.timer_sampling_time_cs, 1)) *| 10_000;
+        timer0.schedule_alarm(.alarm0, timer0.read_low() +% dt_us);
+        // },
+        // else => {
+        // timer0.set_interrupt_enabled(.alarm0, false);
+        // },
+        // }
     }
 }
-fn simulator_interrupt_handler() callconv(.c) void {
+fn timer_interrupt_handler() callconv(.c) void {
     const cs = microzig.interrupt.enter_critical_section();
     defer cs.leave();
 
     const t = time.get_time_since_boot();
-    IO.x_sim.sample(t); // set state of input devices
-    IO.y_sim.sample(t);
+    if (IO.use_simulator) {
+        IO.x_sim.sample(t); // set state of input devices
+        IO.y_sim.sample(t);
+    }
     if (IO.pos_control.sample(t)) {} else |_| {}
 
     timer0.clear_interrupt(.alarm0);
@@ -385,14 +402,6 @@ pub fn switch_interrupt_handler() callconv(.c) void {
     if (IO.pos_control.sample(t)) {} else |_| {}
 }
 
-// pub fn set_alarm(us: u32) void {
-//     const Duration = microzig.drivers.time.Duration;
-//     const current = time.get_time_since_boot();
-//     const target = current.add_duration(Duration.from_us(us));
-
-//     timer.ALARM0.write_raw(@intCast(@intFromEnum(target) & 0xffffffff));
-// }
-
 const tree = Tree.create(items, 16 - 1, 2000);
 const LCD = olimex_lcd.BufferedLCD(tree.bufferLines);
 const TuiImpl = TUI.Impl(tree, &button_masks);
@@ -404,7 +413,7 @@ pub fn main() !void {
     rp2xxx.uart.init_logger(IO.uart0);
 
     std.log.info("setup lcd", .{});
-    var lcd = LCD.init(IO.i2c_device.i2c_device(), @enumFromInt(0x30));
+    var lcd = LCD.init(IO.i2c_device.i2c_device(), @enumFromInt(0x30), IO.lcd_reset);
     var display = lcd.display();
     var buttons = lcd.buttons();
     var tuiImpl = TuiImpl.init(display);
@@ -419,15 +428,10 @@ pub fn main() !void {
     _ = lcd.setBackLight(Config.values.back_light);
     display.cursor(0, 0, 0, 0, .select);
     time.sleep_ms(100);
-    switch_simulator_interrupt();
+    set_timer_interrupt();
     while (true) {
         var events: [8]Event = undefined;
         var ev_idx: u8 = 0;
-        // while (cfg_events.len > 0 and ev_idx < events.len) {
-        //     events[ev_idx] = cfg_events[0];
-        //     cfg_events = cfg_events[1..];
-        //     ev_idx += 1;
-        // }
         tui.writeValues();
         if (tui.print()) {} else |_| {}
         time.sleep_ms(100);
@@ -471,22 +475,9 @@ pub fn main() !void {
                     log.info("back_light event", .{});
                     _ = lcd.setBackLight(back_light.val.*);
                 },
-                .use_simulator => {
-                    switch_simulator_interrupt();
+                .set_timer_interrupt => {
+                    set_timer_interrupt();
                 },
-                // .save_config => {
-                //     switch (ev.pl.tui.button) {
-                //         true => {
-                //             log.info("config true", .{});
-                //             config.write();
-                //             time.sleep_ms(100);
-                //             log.info("config done", .{});
-                //         },
-                //         false => {
-                //             log.info("config false", .{});
-                //         },
-                //     }
-                // },
                 .drive_x => {
                     try IO.drive_x.set(drive_x_state);
                 },
@@ -499,15 +490,8 @@ pub fn main() !void {
                 .relais_b => {
                     try IO.relais_b.set(relais_b_state);
                 },
-                // else => {
-                //     log.info("Unhandled Event", .{});
-                // },
             }
         }
-        // gpio.num(25).put(1);
-        // time.sleep_ms(100);
-        // gpio.num(25).put(0);
-        // time.sleep_ms(900);
     }
 }
 test {
