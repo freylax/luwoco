@@ -3,6 +3,7 @@ const time = microzig.drivers.time;
 
 const std = @import("std");
 const DriveControl = @import("DriveControl.zig");
+const Relais = @import("Relais.zig");
 const Area = @import("area.zig").Area(*const i8);
 
 const Self = @This();
@@ -14,13 +15,17 @@ pub const State = enum {
     finished,
     paused_moving,
     paused_cooking,
+    paused_cooling,
     moving,
     cooking,
+    cooling,
 };
 
 drive_x_control: *DriveControl,
 drive_y_control: *DriveControl,
-cooking_time_xs: *u8, // cooking time in six seconds
+switch_relais: *Relais,
+cooking_time_dm: *u8, // cooking time in deci minutes
+cooling_time_dm: *u8, // cooling time in deci minutes
 work_area: Area,
 
 x_dir: Dir = .forward,
@@ -28,17 +33,35 @@ y_dir: Dir = .forward,
 axis: Axis = .xy,
 
 steps: u16 = 0,
-cook_timer_pos_us: u64 = 0,
-cook_timer_pos_s: u16 = 0,
-cook_timer_pos_update_us: u64 = 0,
+timer_us: u64 = 0,
+timer_s: u16 = 0,
+timer_update_us: u64 = 0,
 
 state: State = .finished,
 
-fn start_cooking(self: *Self, sample_time: time.Absolute) void {
+fn set_timer(self: *Self, sample_time: time.Absolute, duration_dm: u8) void {
+    self.timer_us = @as(u64, duration_dm) *| 6_000_000;
+    self.timer_update_us = sample_time.to_us();
+    self.timer_s = @intCast((self.timer_us + 990_000) / 1_000_000);
+}
+fn update_timer(self: *Self, sample_time: time.Absolute) void {
+    if (self.timer_update_us == 0) {
+        self.timer_update_us = sample_time.to_us();
+    }
+    self.timer_us -|= sample_time.to_us() -| self.timer_update_us;
+    self.timer_s = @intCast((self.timer_us + 990_000) / 1_000_000);
+    self.timer_update_us = sample_time.to_us();
+}
+fn start_cooking(self: *Self, sample_time: time.Absolute) !void {
+    try self.switch_relais.set(.on);
     self.state = .cooking;
-    self.cook_timer_pos_us = @as(u64, self.cooking_time_xs.*) *| 6_000_000;
-    self.cook_timer_pos_update_us = sample_time.to_us();
-    self.cook_timer_pos_s = @intCast((self.cook_timer_pos_us + 990_000) / 1_000_000);
+    self.set_timer(sample_time, self.cooking_time_dm.*);
+}
+
+fn start_cooling(self: *Self, sample_time: time.Absolute) !void {
+    try self.switch_relais.set(.off);
+    self.state = .cooling;
+    self.set_timer(sample_time, self.cooling_time_dm.*);
 }
 
 pub fn sample(self: *Self, sample_time: time.Absolute) !void {
@@ -54,7 +77,7 @@ pub fn sample(self: *Self, sample_time: time.Absolute) !void {
                     // initial pos
                     if (dx.state == .stoped and dy.state == .stoped) {
                         self.axis = .x;
-                        self.start_cooking(sample_time);
+                        try self.start_cooking(sample_time);
                     }
                 },
                 .x => {
@@ -73,25 +96,25 @@ pub fn sample(self: *Self, sample_time: time.Absolute) !void {
                                 }
                             },
                         }
-                        self.start_cooking(sample_time);
+                        try self.start_cooking(sample_time);
                     }
                 },
                 .y => {
                     if (dy.state == .stoped) {
                         self.axis = .x;
-                        self.start_cooking(sample_time);
+                        try self.start_cooking(sample_time);
                     }
                 },
             }
         },
         .cooking => {
-            if (self.cook_timer_pos_update_us == 0) {
-                self.cook_timer_pos_update_us = sample_time.to_us();
-            }
-            self.cook_timer_pos_us -|= sample_time.to_us() -| self.cook_timer_pos_update_us;
-            self.cook_timer_pos_s = @intCast((self.cook_timer_pos_us + 990_000) / 1_000_000);
-            self.cook_timer_pos_update_us = sample_time.to_us();
-            if (self.cook_timer_pos_us > 0) {
+            self.update_timer(sample_time);
+            if (self.timer_us > 0) return;
+            try self.start_cooling(sample_time);
+        },
+        .cooling => {
+            self.update_timer(sample_time);
+            if (self.timer_us > 0) {
                 return;
             }
             if (self.steps == 1) {
@@ -160,8 +183,11 @@ pub fn start(self: *Self) !void {
             self.state = .moving;
         },
         .paused_cooking => {
-            self.cook_timer_pos_update_us = 0;
+            self.timer_update_us = 0;
             self.state = .cooking;
+        },
+        .paused_cooling => {
+            self.state = .cooling;
         },
         else => {},
     }
@@ -185,7 +211,7 @@ pub fn pause(self: *Self) !void {
 
 pub fn reset(self: *Self) !void {
     switch (self.state) {
-        .paused_moving, .paused_cooking => {
+        .paused_moving, .paused_cooking, .paused_cooling => {
             self.steps = 0;
             self.state = .finished;
         },

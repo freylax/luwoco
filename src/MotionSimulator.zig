@@ -19,7 +19,7 @@ pub const Position = struct {
 };
 
 switching_time_cs: *u8,
-driving_time_ds: *u8,
+driving_time_s: *u8,
 active: IOState,
 inactive: IOState,
 min_pin: IOState,
@@ -74,7 +74,7 @@ pub fn sample(self: *Self, sample_time: time.Absolute) void {
                             }
                         },
                         .coarse => {
-                            const driving_time: time.Duration = .from_ms(@as(u64, self.driving_time_ds.*) *| 100);
+                            const driving_time: time.Duration = .from_ms(@as(u64, self.driving_time_s.*) *| 1000);
                             if (driving_time.less_than(dt)) {
                                 // we arrive at the next coord
                                 self.pos.dev = .exact;

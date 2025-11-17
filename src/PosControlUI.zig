@@ -12,7 +12,7 @@ const Self = @This();
 const ClickBt = ClickButton(PosControl);
 const IntI8 = RoRefIntValue(i8, 3, 10);
 const IntU16 = RoRefIntValue(u16, 3, 10);
-const State = EnumRefValue(PosControl.State, [_][]const u8{ "fin", "pam", "pac", "mov", "cok" });
+const State = EnumRefValue(PosControl.State, [_][]const u8{ "fin", "pmv", "pck", "pcl", "mov", "cok", "col" });
 
 startBt: ClickBt,
 pauseBt: ClickBt,
@@ -21,7 +21,7 @@ pos_x: IntI8,
 pos_y: IntI8,
 steps: IntU16,
 state: State,
-timer_pos: IntU16,
+timer: IntU16,
 
 pub fn create(pc: *PosControl, dx: *DriveControl, dy: *DriveControl) Self {
     return .{
@@ -32,7 +32,7 @@ pub fn create(pc: *PosControl, dx: *DriveControl, dy: *DriveControl) Self {
         .pos_y = .{ .ref = &dy.pos.coord },
         .steps = .{ .ref = &pc.steps },
         .state = .{ .ref = &pc.state },
-        .timer_pos = .{ .ref = &pc.cook_timer_pos_s },
+        .timer = .{ .ref = &pc.timer_s },
     };
 }
 
@@ -45,7 +45,7 @@ pub fn ui(self: *Self) []const Item {
         .{ .label = "y" }, // 1
         .{ .value = self.pos_y.value() }, // 3
         .{ .label = "\n" },
-        .{ .value = self.timer_pos.value() }, // 3
+        .{ .value = self.timer.value() }, // 3
         .{ .label = " >" }, // 2
         .{ .value = self.startBt.value(.{ .db = uib.button2 }) }, // 3
         .{ .label = "=" }, // 1
@@ -57,7 +57,7 @@ pub fn ui(self: *Self) []const Item {
 
 fn startEnabled(pc: *PosControl) bool {
     return switch (pc.state) {
-        .finished, .paused_moving, .paused_cooking => true,
+        .finished, .paused_moving, .paused_cooking, .paused_cooling => true,
         else => false,
     };
 }
@@ -67,7 +67,7 @@ fn startClicked(pc: *PosControl) void {
 }
 fn pauseEnabled(pc: *PosControl) bool {
     return switch (pc.state) {
-        .moving, .cooking => true,
+        .moving, .cooking, .cooling => true,
         else => false,
     };
 }
@@ -76,7 +76,7 @@ fn pauseClicked(pc: *PosControl) void {
 }
 fn resetEnabled(pc: *PosControl) bool {
     return switch (pc.state) {
-        .paused_moving, .paused_cooking => true,
+        .paused_moving, .paused_cooking, .paused_cooling => true,
         else => false,
     };
 }

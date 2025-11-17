@@ -84,7 +84,8 @@ const button_masks = blk: {
 
 var back_light = IntValue(*u8, u8, 4, 10){ .range = .{ .min = 0, .max = 255 }, .val = &Config.values.back_light, .id = EventId.back_light.id() };
 
-var cook_time = IntValue(*u8, u8, 4, 10){ .range = .{ .min = 0, .max = 255 }, .val = &Config.values.cook_time_xs };
+var cooking_time = IntValue(*u8, u8, 4, 10){ .range = .{ .min = 0, .max = 255 }, .val = &Config.values.cooking_time_dm };
+var cooling_time = IntValue(*u8, u8, 4, 10){ .range = .{ .min = 0, .max = 255 }, .val = &Config.values.cooling_time_dm };
 
 const AreaUIV = areaUI.AreaUI(*i8, i8, 3);
 var allowed_area = aablk: {
@@ -129,9 +130,9 @@ var simulator_switching_time_cs = IntValue(*u8, u8, 4, 10){
     .range = .{ .min = 0, .max = 255 },
     .val = &Config.values.simulator_switching_time_cs,
 };
-var simulator_driving_time_ds = IntValue(*u8, u8, 4, 10){
+var simulator_driving_time_s = IntValue(*u8, u8, 4, 10){
     .range = .{ .min = 0, .max = 255 },
-    .val = &Config.values.simulator_driving_time_ds,
+    .val = &Config.values.simulator_driving_time_s,
 };
 var use_simulator = RefBoolValue{ .ref = &IO.use_simulator, .id = EventId.set_timer_interrupt.id() };
 
@@ -203,10 +204,13 @@ const items: []const Item = &.{
                 .str = " allowed area\n",
                 .items = allowed_area.ui(),
             } },
-            .{ .label = "Cookt xs:" },
-            .{ .value = cook_time.value() },
+            .{ .label = "cook tm dm:" },
+            .{ .value = cooking_time.value() },
             .{ .label = "\n" },
-            .{ .label = "Timer cs:" },
+            .{ .label = "cool tm dm:" },
+            .{ .value = cooling_time.value() },
+            .{ .label = "\n" },
+            .{ .label = "smpl tm cs:" },
             .{ .value = timer_sampling_time_cs.value() },
             .{ .label = "\n" },
             .{ .popup = .{
@@ -216,8 +220,8 @@ const items: []const Item = &.{
                     .{ .value = simulator_sampling_time_cs.value() },
                     .{ .label = "\nswit cs:" },
                     .{ .value = simulator_switching_time_cs.value() },
-                    .{ .label = "\ndriv ds:" },
-                    .{ .value = simulator_driving_time_ds.value() },
+                    .{ .label = "\ndriv s:" },
+                    .{ .value = simulator_driving_time_s.value() },
                 },
             } },
             .{ .label = "Backlight:" },
