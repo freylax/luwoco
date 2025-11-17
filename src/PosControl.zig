@@ -114,9 +114,8 @@ pub fn sample(self: *Self, sample_time: time.Absolute) !void {
         },
         .cooling => {
             self.update_timer(sample_time);
-            if (self.timer_us > 0) {
-                return;
-            }
+            if (self.timer_us > 0) return;
+
             if (self.steps == 1) {
                 self.state = .finished;
             } else {
@@ -204,6 +203,9 @@ pub fn pause(self: *Self) !void {
         },
         .cooking => {
             self.state = .paused_cooking;
+        },
+        .cooling => {
+            self.state = .paused_cooling;
         },
         else => {},
     }
