@@ -7,6 +7,7 @@ const Relais = @import("Relais.zig");
 const SampleButton = @import("SampleButton.zig");
 const DriveControl = @import("DriveControl.zig");
 const MotionSimulator = @import("MotionSimulator.zig");
+const CurrentSensor = @import("CurrentSensor.zig");
 const PosControl = @import("PosControl.zig");
 const rp2xxx = microzig.hal;
 const gpio = rp2xxx.gpio;
@@ -157,10 +158,22 @@ pub var drive_y_control = DriveControl{
     .max_coord = &Config.values.allowed_area.y.max,
 };
 
+pub var current_sensor_enable: bool = false;
+
+pub var current_sensor = CurrentSensor{
+    .input = .ain0, //.temp_sensor,
+    .enable = &current_sensor_enable,
+    .nr_of_samples = &Config.values.current_sensor_nr_of_samples,
+    .pause_time_cs = &Config.values.current_sensor_pause_time_cs,
+};
+
 pub var pos_control = PosControl{
     .drive_x_control = &drive_x_control,
     .drive_y_control = &drive_y_control,
     .switch_relais = &relais_a,
+    .current_sensor_enable = &current_sensor_enable,
+    .current_sensor_value = &current_sensor.value,
+    .current_sensor_threshold = &Config.values.current_sensor_threshold,
     .cooking_time_dm = &Config.values.cooking_time_dm,
     .cooling_time_dm = &Config.values.cooling_time_dm,
     .work_area = wablk: {
@@ -207,6 +220,8 @@ pub fn begin() !void {
 
     try relais_a.begin();
     try relais_b.begin();
+
+    current_sensor.begin();
 
     const t = time.get_time_since_boot();
     _ = try pos_x_pos.sample(t);

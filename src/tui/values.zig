@@ -269,7 +269,20 @@ pub fn RoRefIntValue(comptime T: type, comptime size: u8, comptime base: u8) typ
         }
         fn get(ctx: *anyopaque) []const u8 {
             const self: *Self = @ptrCast(@alignCast(ctx));
-            _ = std.fmt.printInt(&self.buf, self.ref.*, base, .lower, .{ .alignment = .right, .width = size });
+            switch (@typeInfo(T)) {
+                .optional => {
+                    if (self.ref.*) |v| {
+                        _ = std.fmt.printInt(&self.buf, v, base, .lower, .{ .alignment = .right, .width = size });
+                    } else {
+                        for (0..size) |i| {
+                            self.buf[i] = if (i == size / 2) '-' else ' ';
+                        }
+                    }
+                },
+                else => {
+                    _ = std.fmt.printInt(&self.buf, self.ref.*, base, .lower, .{ .alignment = .right, .width = size });
+                },
+            }
             return &self.buf;
         }
     };

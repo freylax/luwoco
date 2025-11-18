@@ -165,11 +165,13 @@ pub fn BufferedLCD(comptime NrOfLines: comptime_int) type {
             // insert the chars to print/update, all other are zero
             var toPrint: [2][Line.len]u8 = .{.{0} ** Line.len} ** 2;
 
-            retry: for (0..1) |retry_ctr| {
+            retry: for (0..2) |retry_ctr| {
                 {
                     defer self.mx.unlock();
                     self.mx.lock();
-
+                    if (retry_ctr == 1) {
+                        std.log.info("LCD: retry to write display content", .{});
+                    }
                     for (lines, 0..) |l, i| {
                         if (l >= nLines) continue;
                         // check if no modification did happend
@@ -222,7 +224,7 @@ pub fn BufferedLCD(comptime NrOfLines: comptime_int) type {
             self.reset.write(.low) catch {};
             time.sleep_ms(20);
             self.reset.write(.high) catch {};
-            time.sleep_ms(500);
+            time.sleep_ms(100);
             self.writeBackLight() catch {};
             time.sleep_ms(20);
         }

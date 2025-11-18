@@ -15,7 +15,7 @@ const Item = Tree.Item;
 const values = @import("tui/values.zig");
 const uib = @import("ui_buttons.zig");
 const IntValue = values.IntValue;
-// const RefIntValue = values.RefIntValue;
+const RoRefIntValue = values.RoRefIntValue;
 const RefBoolValue = values.RefBoolValue;
 const RefPushButton = values.RefPushButton;
 const PushButton = values.PushButton;
@@ -135,6 +135,24 @@ var simulator_driving_time_s = IntValue(*u8, u8, 4, 10){
     .val = &Config.values.simulator_driving_time_s,
 };
 var use_simulator = RefBoolValue{ .ref = &IO.use_simulator, .id = EventId.set_timer_interrupt.id() };
+var current_sensor_sampling_time_ms = IntValue(*u8, u8, 4, 10){
+    .range = .{ .min = 1, .max = 255 },
+    .val = &Config.values.current_sensor_sampling_time_ms,
+};
+var current_sensor_nr_of_samples = IntValue(*u8, u8, 4, 10){
+    .range = .{ .min = 1, .max = 255 },
+    .val = &Config.values.current_sensor_nr_of_samples,
+};
+var current_sensor_pause_time_cs = IntValue(*u8, u8, 4, 10){
+    .range = .{ .min = 1, .max = 255 },
+    .val = &Config.values.current_sensor_pause_time_cs,
+};
+var current_sensor_threshold = IntValue(*u8, u8, 4, 10){
+    .range = .{ .min = 0, .max = 255 },
+    .val = &Config.values.current_sensor_threshold,
+};
+var current_sensor_enable = RefBoolValue{ .ref = &IO.current_sensor_enable };
+var current_sensor_value = RoRefIntValue(?u8, 4, 10){ .ref = &IO.current_sensor.value };
 
 var pb_save_config = ClickButton(Config){
     .ref = &Config.values,
@@ -224,6 +242,19 @@ const items: []const Item = &.{
                     .{ .value = simulator_driving_time_s.value() },
                 },
             } },
+            .{ .popup = .{
+                .str = " current sensor\n",
+                .items = &.{
+                    .{ .label = "samp ms:" },
+                    .{ .value = current_sensor_sampling_time_ms.value() },
+                    .{ .label = "\nnr of samp:" },
+                    .{ .value = current_sensor_nr_of_samples.value() },
+                    .{ .label = "\npause cs:" },
+                    .{ .value = current_sensor_pause_time_cs.value() },
+                    .{ .label = "\nthreshold:" },
+                    .{ .value = current_sensor_threshold.value() },
+                },
+            } },
             .{ .label = "Backlight:" },
             .{ .value = back_light.value() },
         },
@@ -279,6 +310,15 @@ const items: []const Item = &.{
         .{ .label = "simulator:" },
         .{ .value = use_simulator.value() },
     } } },
+    .{ .popup = .{
+        .str = " cur sensor\n",
+        .items = &.{
+            .{ .label = "enable:" },
+            .{ .value = current_sensor_enable.value() },
+            .{ .label = "\nvalue:" },
+            .{ .value = current_sensor_value.value() },
+        },
+    } },
     .{ .popup = .{
         .str = " input test\n",
         .items = &.{
@@ -359,38 +399,38 @@ const items: []const Item = &.{
 };
 
 fn set_timer_interrupt() void {
+    microzig.interrupt.enable(.TIMER_IRQ_0);
+    timer0.set_interrupt_enabled(.alarm0, true);
     if (IO.use_simulator) {
-        microzig.interrupt.enable(.TIMER_IRQ_0);
-        timer0.set_interrupt_enabled(.alarm0, true);
         // set alarm
         const dt_us = @as(u32, @max(Config.values.simulator_sampling_time_cs, 1)) *| 10_000;
         timer0.schedule_alarm(.alarm0, timer0.read_low() +% dt_us);
     } else {
-        // switch (IO.pos_control.state) {
-        // .moving, .cooking => {
         const dt_us = @as(u32, @max(Config.values.timer_sampling_time_cs, 1)) *| 10_000;
         timer0.schedule_alarm(.alarm0, timer0.read_low() +% dt_us);
-        // },
-        // else => {
-        // timer0.set_interrupt_enabled(.alarm0, false);
-        // },
-        // }
     }
 }
 fn timer_interrupt_handler() callconv(.c) void {
     const cs = microzig.interrupt.enter_critical_section();
     defer cs.leave();
-
     const t = time.get_time_since_boot();
-    if (IO.use_simulator) {
-        IO.x_sim.sample(t); // set state of input devices
-        IO.y_sim.sample(t);
+    var dt_us: u32 = undefined;
+    switch (IO.current_sensor.sample(t) catch .later) {
+        .soon => {
+            dt_us = @as(u32, @max(Config.values.current_sensor_sampling_time_ms, 1)) * 1_000;
+        },
+        .later => {
+            if (IO.use_simulator) {
+                IO.x_sim.sample(t); // set state of input devices
+                IO.y_sim.sample(t);
+                dt_us = @as(u32, @max(Config.values.simulator_sampling_time_cs, 1)) *| 10_000;
+            } else {
+                dt_us = @as(u32, @max(Config.values.timer_sampling_time_cs, 1)) *| 10_000;
+            }
+            if (IO.pos_control.sample(t)) {} else |_| {}
+        },
     }
-    if (IO.pos_control.sample(t)) {} else |_| {}
-
     timer0.clear_interrupt(.alarm0);
-    // set alarm
-    const dt_us = @as(u32, Config.values.simulator_sampling_time_cs) *| 10_000;
     timer0.schedule_alarm(.alarm0, timer0.read_low() +% dt_us);
 }
 
@@ -406,7 +446,7 @@ pub fn switch_interrupt_handler() callconv(.c) void {
     if (IO.pos_control.sample(t)) {} else |_| {}
 }
 
-const tree = Tree.create(items, 16 - 1, 2000);
+const tree = Tree.create(items, 16 - 1, 3000);
 const LCD = olimex_lcd.BufferedLCD(tree.bufferLines);
 const TuiImpl = TUI.Impl(tree, &button_masks);
 
