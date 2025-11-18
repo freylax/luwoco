@@ -1,6 +1,8 @@
 const std = @import("std");
 const assert = std.debug.assert;
-const Value = @import("items.zig").Value;
+const items = @import("items.zig");
+const Value = items.Value;
+const Behaviour = items.ButtonValue.Behavior;
 const Event = @import("Event.zig");
 const range = @import("../range.zig");
 pub const StrValue = struct {
@@ -327,6 +329,10 @@ pub const PushButton = struct {
         self.val = false;
         return self.event();
     }
+    fn toggle(ctx: *anyopaque) ?Event {
+        const self: *PushButton = @ptrCast(@alignCast(ctx));
+        self.val = if (self.val) false else true;
+    }
     fn enabled(ctx: *anyopaque) bool {
         _ = ctx;
         return true;
@@ -343,15 +349,16 @@ pub fn RefPushButton(comptime T: type) type {
         buf: [3]u8 = [_]u8{' '} ** 3,
         const Opt = struct {
             db: ?u8 = null,
+            behaviour: Behaviour = .push_button,
         };
         pub fn value(self: *Self, opt: Opt) Value {
             return .{
                 .button = .{
-                    .behavior = .push_button,
+                    .behavior = opt.behaviour,
                     .size = self.buf.len,
                     .direct_buttons = if (opt.db) |db| &.{db} else &.{},
                     .ptr = self,
-                    .vtable = &.{ .get = get, .set = set, .reset = reset, .enabled = enabled },
+                    .vtable = &.{ .get = get, .set = set, .reset = reset, .toggle = toggle, .enabled = enabled },
                 },
             };
         }
@@ -383,6 +390,11 @@ pub fn RefPushButton(comptime T: type) type {
             self.ref.* = self.released;
             return self.event();
         }
+        fn toggle(ctx: *anyopaque) ?Event {
+            const self: *Self = @ptrCast(@alignCast(ctx));
+            self.ref.* = if (self.ref.* == self.pressed) self.released else self.pressed;
+            return self.event();
+        }
         fn enabled_(self: *Self) bool {
             return self.ref.* == self.pressed or self.ref.* == self.released;
         }
@@ -411,7 +423,7 @@ pub fn ClickButton(comptime T: type) type {
                     .size = self.buf.len,
                     .direct_buttons = if (opt.db) |db| &.{db} else &.{},
                     .ptr = self,
-                    .vtable = &.{ .get = get, .set = set, .reset = reset, .enabled = enabled_cb },
+                    .vtable = &.{ .get = get, .set = set, .reset = reset, .toggle = toggle, .enabled = enabled_cb },
                 },
             };
         }
@@ -442,6 +454,11 @@ pub fn ClickButton(comptime T: type) type {
         fn reset(ctx: *anyopaque) ?Event {
             const self: *Self = @ptrCast(@alignCast(ctx));
             self.pressed = false;
+            return self.event();
+        }
+        // tihs is a dummy implementation
+        fn toggle(ctx: *anyopaque) ?Event {
+            const self: *Self = @ptrCast(@alignCast(ctx));
             return self.event();
         }
         fn enabled_(self: *Self) bool {

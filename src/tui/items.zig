@@ -63,7 +63,7 @@ pub const RwValue = struct {
 pub const ButtonValue = struct {
     pub const Behavior = enum {
         one_click,
-        radio_button,
+        toggle_button,
         push_button,
     };
     size: u8,
@@ -75,6 +75,7 @@ pub const ButtonValue = struct {
         get: *const fn (*anyopaque) []const u8,
         set: *const fn (*anyopaque) ?Event,
         reset: *const fn (*anyopaque) ?Event,
+        toggle: *const fn (*anyopaque) ?Event,
         enabled: *const fn (*anyopaque) bool,
     };
     pub inline fn get(v: ButtonValue) []const u8 {
@@ -85,6 +86,9 @@ pub const ButtonValue = struct {
     }
     pub inline fn reset(v: ButtonValue) ?Event {
         return v.vtable.reset(v.ptr);
+    }
+    pub inline fn toggle(v: ButtonValue) ?Event {
+        return v.vtable.toggle(v.ptr);
     }
     pub inline fn enabled(v: ButtonValue) bool {
         return v.vtable.enabled(v.ptr);

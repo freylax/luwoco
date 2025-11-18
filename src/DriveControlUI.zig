@@ -70,10 +70,10 @@ pub fn ui(self: *Self) []const Item {
         .{ .label = "\n" },
         .{ .label = "#" },
         .{ .value = self.stopBt.value(.{ .db = uib.button1 }) },
-        .{ .label = "+" },
-        .{ .value = self.fwBt.value(.{ .db = uib.button2 }) },
         .{ .label = "-" },
-        .{ .value = self.bwBt.value(.{ .db = uib.button3 }) },
+        .{ .value = self.bwBt.value(.{ .db = uib.button2 }) },
+        .{ .label = "+" },
+        .{ .value = self.fwBt.value(.{ .db = uib.button3 }) },
         .{ .label = "o" },
         .{ .value = self.origBt.value(.{ .db = uib.button4 }) },
     };
@@ -116,7 +116,7 @@ fn stopClicked(dc: *DriveControl) void {
 
 fn origEnabled(dc: *DriveControl) bool {
     return switch (dc.state) {
-        .stoped => true,
+        .stoped, .limited => true,
         else => false,
     };
 }

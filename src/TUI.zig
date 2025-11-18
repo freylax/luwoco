@@ -525,7 +525,11 @@ pub fn Impl(comptime tree: Tree, button_masks_: []const u8) type {
                                                             push_o(ev, button.reset());
                                                         }
                                                     },
-                                                    else => {},
+                                                    .toggle_button => {
+                                                        if (activate_pressed) {
+                                                            push_o(ev, button.toggle());
+                                                        }
+                                                    },
                                                 }
                                             },
                                             else => {},
@@ -595,7 +599,11 @@ pub fn Impl(comptime tree: Tree, button_masks_: []const u8) type {
                                                     push_o(ev, button.reset());
                                                 }
                                             },
-                                            else => {},
+                                            .toggle_button => {
+                                                if (pressed) {
+                                                    push_o(ev, button.toggle());
+                                                }
+                                            },
                                         }
                                         if (m == esc_m) {
                                             esc_enabled = false;

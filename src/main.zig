@@ -151,7 +151,12 @@ var current_sensor_threshold = IntValue(*u8, u8, 4, 10){
     .range = .{ .min = 0, .max = 255 },
     .val = &Config.values.current_sensor_threshold,
 };
-var current_sensor_enable = RefBoolValue{ .ref = &IO.current_sensor_enable };
+// var current_sensor_enable = RefBoolValue{ .ref = &IO.current_sensor_enable };
+var current_sensor_enable = RefPushButton(bool){
+    .ref = &IO.current_sensor_enable,
+    .pressed = true,
+    .released = false,
+};
 var current_sensor_value = RoRefIntValue(?u8, 4, 10){ .ref = &IO.current_sensor.value };
 
 var pb_save_config = ClickButton(Config){
@@ -209,7 +214,7 @@ var pos_ui = PosControlUI.create(&IO.pos_control, &IO.drive_x_control, &IO.drive
 const items: []const Item = &.{
     .{ .popup = .{
         .id = EventId.config.id(),
-        .str = " Config\n",
+        .str = " config\n",
         .items = &.{
             .{ .label = "Save: " },
             .{ .value = pb_save_config.value(.{}) },
@@ -263,60 +268,62 @@ const items: []const Item = &.{
         .str = " pos control\n",
         .items = pos_ui.ui(),
     } },
-    .{ .popup = .{
-        .str = " output test\n",
-        .items = &.{
-            .{ .popup = .{
-                .str = " Test Drive X\n",
-                .items = &.{
-                    .{ .label = "    " },
-                    .{ .label = " X+" },
-                    .{ .value = pb_dx_dir_a.value(.{ .db = uib.button3 }) },
-                    .{ .label = " X-" },
-                    .{ .value = pb_dx_dir_b.value(.{ .db = uib.button4 }) },
-                },
-            } },
-            .{ .popup = .{
-                .str = " Test Drive y\n",
-                .items = &.{
-                    .{ .label = "    " },
-                    .{ .label = " y+" },
-                    .{ .value = pb_dy_dir_a.value(.{ .db = uib.button3 }) },
-                    .{ .label = " y-" },
-                    .{ .value = pb_dy_dir_b.value(.{ .db = uib.button4 }) },
-                },
-            } },
-            .{ .popup = .{
-                .str = " Relais Test\n",
-                .items = &.{
-                    .{ .label = "    " },
-                    .{ .label = " A " },
-                    .{ .value = pb_relais_a.value(.{ .db = uib.button3 }) },
-                    .{ .label = " B " },
-                    .{ .value = pb_relais_b.value(.{ .db = uib.button4 }) },
-                },
-            } },
-        },
-    } },
-    .{ .popup = .{ .str = " control test\n", .items = &.{
+    .{ .popup = .{ .str = " drive control\n", .items = &.{
         .{ .popup = .{
-            .str = " drive x\n",
+            .str = " drive X\n",
             .items = drive_x_ui.ui(),
         } },
         .{ .popup = .{
-            .str = " drive y\n",
+            .str = " drive Y\n",
             .items = drive_y_ui.ui(),
         } },
         .{ .label = "simulator:" },
         .{ .value = use_simulator.value() },
     } } },
     .{ .popup = .{
-        .str = " cur sensor\n",
+        .str = " current sensor\n",
         .items = &.{
-            .{ .label = "enable:" },
-            .{ .value = current_sensor_enable.value() },
-            .{ .label = "\nvalue:" },
+            .{ .label = "enbl:" },
+            .{ .value = current_sensor_enable.value(.{ .db = uib.button3, .behaviour = .toggle_button }) },
+            .{ .label = " rel:" },
+            .{ .value = pb_relais_a.value(.{ .db = uib.button4, .behaviour = .toggle_button }) },
+            .{ .label = "value:" },
             .{ .value = current_sensor_value.value() },
+        },
+    } },
+    .{ .popup = .{
+        .str = " output test\n",
+        .items = &.{
+            .{ .popup = .{
+                .str = " Drive X\n",
+                .items = &.{
+                    .{ .label = "    " },
+                    .{ .label = " X-" },
+                    .{ .value = pb_dx_dir_b.value(.{ .db = uib.button3 }) },
+                    .{ .label = " X+" },
+                    .{ .value = pb_dx_dir_a.value(.{ .db = uib.button4 }) },
+                },
+            } },
+            .{ .popup = .{
+                .str = " Drive Y\n",
+                .items = &.{
+                    .{ .label = "    " },
+                    .{ .label = " Y-" },
+                    .{ .value = pb_dy_dir_b.value(.{ .db = uib.button3 }) },
+                    .{ .label = " Y+" },
+                    .{ .value = pb_dy_dir_a.value(.{ .db = uib.button4 }) },
+                },
+            } },
+            .{ .popup = .{
+                .str = " Relais\n",
+                .items = &.{
+                    .{ .label = "    " },
+                    .{ .label = " A " },
+                    .{ .value = pb_relais_a.value(.{ .db = uib.button3, .behaviour = .toggle_button }) },
+                    .{ .label = " B " },
+                    .{ .value = pb_relais_b.value(.{ .db = uib.button4, .behaviour = .toggle_button }) },
+                },
+            } },
         },
     } },
     .{ .popup = .{
