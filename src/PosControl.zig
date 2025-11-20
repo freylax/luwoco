@@ -1,7 +1,7 @@
 const microzig = @import("microzig");
 const time = microzig.drivers.time;
-
 const std = @import("std");
+const SampleButton = @import("SampleButton.zig");
 const DriveControl = @import("DriveControl.zig");
 const Relais = @import("Relais.zig");
 const Area = @import("area.zig").Area(*const i8);
@@ -23,13 +23,14 @@ pub const State = enum {
 
 drive_x_control: *DriveControl,
 drive_y_control: *DriveControl,
-switch_relais: *Relais,
+cook_relais: *Relais,
+cook_enable: *SampleButton,
 cooking_time_dm: *u8, // cooking time in deci minutes
 cooling_time_dm: *u8, // cooling time in deci minutes
 work_area: Area,
-current_sensor_enable: *bool,
-current_sensor_value: *?u8,
-current_sensor_threshold: *u8,
+// current_sensor_enable: *bool,
+// current_sensor_value: *?u8,
+// current_sensor_threshold: *u8,
 
 x_dir: Dir = .forward,
 y_dir: Dir = .forward,
@@ -56,15 +57,15 @@ fn update_timer(self: *Self, sample_time: time.Absolute) void {
     self.timer_update_us = sample_time.to_us();
 }
 fn start_cooking(self: *Self, sample_time: time.Absolute) !void {
-    try self.switch_relais.set(.on);
-    self.current_sensor_enable.* = true;
+    try self.cook_relais.set(switch (self.cook_enable.is_active) {
+        true => .on,
+        false => .off,
+    });
     self.state = .cooking;
     self.set_timer(sample_time, self.cooking_time_dm.*);
 }
-
 fn start_cooling(self: *Self, sample_time: time.Absolute) !void {
-    try self.switch_relais.set(.off);
-    self.current_sensor_enable.* = false;
+    try self.cook_relais.set(.off);
     self.state = .cooling;
     self.set_timer(sample_time, self.cooling_time_dm.*);
 }
@@ -75,6 +76,7 @@ pub fn sample(self: *Self, sample_time: time.Absolute) !void {
     const wa = &self.work_area;
     try dx.sample(sample_time);
     try dy.sample(sample_time);
+    _ = try self.cook_enable.sample(sample_time);
     switch (self.state) {
         .moving => {
             switch (self.axis) {
@@ -113,14 +115,29 @@ pub fn sample(self: *Self, sample_time: time.Absolute) !void {
             }
         },
         .cooking => {
-            if (self.current_sensor_value.*) |v| {
-                if (v >= self.current_sensor_threshold.*) {} else {
-                    // microwave is off, timer stays like it is
+            switch (self.cook_enable.is_active) {
+                true => {
+                    switch (self.cook_relais.state) {
+                        .on => {},
+                        .off => {
+                            // switch cook on
+                            try self.cook_relais.set(.on);
+                            //start counting now
+                            self.timer_update_us = 0;
+                        },
+                    }
+                },
+                false => {
+                    switch (self.cook_relais.state) {
+                        .on => {
+                            // switch cook off
+                            try self.cook_relais.set(.off);
+                        },
+                        .off => {},
+                    }
+                    // stop timer
                     self.timer_update_us = 0;
-                }
-            } else {
-                // microwave is off, timer stays like it is
-                self.timer_update_us = 0;
+                },
             }
             self.update_timer(sample_time);
             if (self.timer_us > 0) return;
@@ -198,7 +215,10 @@ pub fn start(self: *Self) !void {
         },
         .paused_cooking => {
             self.timer_update_us = 0;
-            try self.switch_relais.set(.on);
+            try self.cook_relais.set(switch (self.cook_enable.is_active) {
+                true => .on,
+                false => .off,
+            });
             self.state = .cooking;
         },
         .paused_cooling => {
@@ -218,7 +238,7 @@ pub fn pause(self: *Self) !void {
             self.state = .paused_moving;
         },
         .cooking => {
-            try self.switch_relais.set(.off);
+            try self.cook_relais.set(.off);
             self.state = .paused_cooking;
         },
         .cooling => {

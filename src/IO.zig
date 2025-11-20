@@ -1,13 +1,14 @@
 const std = @import("std");
 const microzig = @import("microzig");
 const peripherals = microzig.chip.peripherals;
+const Digital_IO = microzig.drivers.base.Digital_IO;
+const IOState = Digital_IO.State;
 const Config = @import("Config.zig");
 const Drive = @import("Drive.zig");
 const Relais = @import("Relais.zig");
 const SampleButton = @import("SampleButton.zig");
 const DriveControl = @import("DriveControl.zig");
 const MotionSimulator = @import("MotionSimulator.zig");
-const CurrentSensor = @import("CurrentSensor.zig");
 const PosControl = @import("PosControl.zig");
 const rp2xxx = microzig.hal;
 const gpio = rp2xxx.gpio;
@@ -36,6 +37,7 @@ const pin_config = rp2xxx.pins.GlobalConfiguration{
     .GPIO19 = .{ .name = "pos_y_pos", .direction = .in, .pull = .up },
     .GPIO20 = .{ .name = "pos_y_min", .direction = .in, .pull = .up },
     .GPIO21 = .{ .name = "pos_y_max", .direction = .in, .pull = .up },
+    .GPIO22 = .{ .name = "cook_enable", .direction = .in, .pull = .up },
     .GPIO25 = .{ .name = "led", .direction = .out },
 };
 
@@ -57,6 +59,7 @@ const iod = struct {
     var drive_y_dir_b = GPIO_Device.init(pins.drive_y_dir_b);
     var relais_a = GPIO_Device.init(pins.relais_a);
     var relais_b = GPIO_Device.init(pins.relais_b);
+    var cook_enable = GPIO_Device.init(pins.cook_enable);
 };
 
 pub const uart0 = rp2xxx.uart.instance.num(0);
@@ -65,6 +68,7 @@ pub const i2c0 = rp2xxx.i2c.instance.num(0);
 pub var lcd_reset = iod.lcd_reset.digital_io();
 // not io related, but let live here for now.
 pub var use_simulator: bool = false;
+pub var cook_enable_sim: IOState = .high;
 
 pub var i2c_device = I2C_Device.init(i2c0, null);
 pub var x_sim = MotionSimulator{
@@ -121,6 +125,12 @@ pub var pos_y_max = SampleButton{
     .simulator_pin = &y_sim.max_pin,
     .use_simulator = &use_simulator,
 };
+pub var cook_enable = SampleButton{
+    .pin = iod.cook_enable.digital_io(),
+    .active = .low,
+    .simulator_pin = &cook_enable_sim,
+    .use_simulator = &use_simulator,
+};
 pub var drive_x = Drive{
     .enable = iod.drive_x_enable.digital_io(),
     .dir_a = iod.drive_x_dir_a.digital_io(),
@@ -158,22 +168,11 @@ pub var drive_y_control = DriveControl{
     .max_coord = &Config.values.allowed_area.y.max,
 };
 
-pub var current_sensor_enable: bool = false;
-
-pub var current_sensor = CurrentSensor{
-    .input = .ain0, //.temp_sensor,
-    .enable = &current_sensor_enable,
-    .nr_of_samples = &Config.values.current_sensor_nr_of_samples,
-    .pause_time_cs = &Config.values.current_sensor_pause_time_cs,
-};
-
 pub var pos_control = PosControl{
     .drive_x_control = &drive_x_control,
     .drive_y_control = &drive_y_control,
-    .switch_relais = &relais_a,
-    .current_sensor_enable = &current_sensor_enable,
-    .current_sensor_value = &current_sensor.value,
-    .current_sensor_threshold = &Config.values.current_sensor_threshold,
+    .cook_relais = &relais_a,
+    .cook_enable = &cook_enable,
     .cooking_time_dm = &Config.values.cooking_time_dm,
     .cooling_time_dm = &Config.values.cooling_time_dm,
     .work_area = wablk: {
@@ -220,8 +219,6 @@ pub fn begin() !void {
 
     try relais_a.begin();
     try relais_b.begin();
-
-    current_sensor.begin();
 
     const t = time.get_time_since_boot();
     _ = try pos_x_pos.sample(t);

@@ -345,6 +345,7 @@ pub fn RefPushButton(comptime T: type) type {
         ref: *T,
         pressed: T,
         released: T,
+        enabled: ?*const fn () bool = null,
         id: ?u16 = null,
         buf: [3]u8 = [_]u8{' '} ** 3,
         const Opt = struct {
@@ -358,7 +359,7 @@ pub fn RefPushButton(comptime T: type) type {
                     .size = self.buf.len,
                     .direct_buttons = if (opt.db) |db| &.{db} else &.{},
                     .ptr = self,
-                    .vtable = &.{ .get = get, .set = set, .reset = reset, .toggle = toggle, .enabled = enabled },
+                    .vtable = &.{ .get = get, .set = set, .reset = reset, .toggle = toggle, .enabled = enabledCb },
                 },
             };
         }
@@ -396,9 +397,13 @@ pub fn RefPushButton(comptime T: type) type {
             return self.event();
         }
         fn enabled_(self: *Self) bool {
-            return self.ref.* == self.pressed or self.ref.* == self.released;
+            if (self.enabled) |cb| {
+                return cb();
+            } else {
+                return self.ref.* == self.pressed or self.ref.* == self.released;
+            }
         }
-        fn enabled(ctx: *anyopaque) bool {
+        fn enabledCb(ctx: *anyopaque) bool {
             const self: *Self = @ptrCast(@alignCast(ctx));
             return enabled_(self);
         }

@@ -1,6 +1,8 @@
 const std = @import("std");
 const microzig = @import("microzig");
 const peripherals = microzig.chip.peripherals;
+const Digital_IO = microzig.drivers.base.Digital_IO;
+const IOState = Digital_IO.State;
 const olimex_lcd = @import("olimex_lcd.zig");
 const Drive = @import("Drive.zig");
 const Relais = @import("Relais.zig");
@@ -134,31 +136,21 @@ var simulator_driving_time_s = IntValue(*u8, u8, 4, 10){
     .range = .{ .min = 0, .max = 255 },
     .val = &Config.values.simulator_driving_time_s,
 };
-var use_simulator = RefBoolValue{ .ref = &IO.use_simulator, .id = EventId.set_timer_interrupt.id() };
-var current_sensor_sampling_time_ms = IntValue(*u8, u8, 4, 10){
-    .range = .{ .min = 1, .max = 255 },
-    .val = &Config.values.current_sensor_sampling_time_ms,
-};
-var current_sensor_nr_of_samples = IntValue(*u8, u8, 4, 10){
-    .range = .{ .min = 1, .max = 255 },
-    .val = &Config.values.current_sensor_nr_of_samples,
-};
-var current_sensor_pause_time_cs = IntValue(*u8, u8, 4, 10){
-    .range = .{ .min = 1, .max = 255 },
-    .val = &Config.values.current_sensor_pause_time_cs,
-};
-var current_sensor_threshold = IntValue(*u8, u8, 4, 10){
-    .range = .{ .min = 0, .max = 255 },
-    .val = &Config.values.current_sensor_threshold,
-};
-// var current_sensor_enable = RefBoolValue{ .ref = &IO.current_sensor_enable };
-var current_sensor_enable = RefPushButton(bool){
-    .ref = &IO.current_sensor_enable,
+var use_simulator = RefPushButton(bool){
+    .ref = &IO.use_simulator,
     .pressed = true,
     .released = false,
+    .id = EventId.set_timer_interrupt.id(),
 };
-var current_sensor_value = RoRefIntValue(?u8, 4, 10){ .ref = &IO.current_sensor.value };
-
+fn pb_cook_enable_enabled() bool {
+    return IO.use_simulator;
+}
+var pb_cook_enable = RefPushButton(IOState){
+    .ref = &IO.cook_enable_sim,
+    .pressed = .low,
+    .released = .high,
+    .enabled = pb_cook_enable_enabled,
+};
 var pb_save_config = ClickButton(Config){
     .ref = &Config.values,
     .enabled = Config.data_differ,
@@ -178,7 +170,6 @@ var pb_dx_dir_b = RefPushButton(Drive.State){
     .released = .off,
     .id = EventId.drive_x.id(),
 };
-
 var drive_y_state: Drive.State = .off;
 var pb_dy_dir_a = RefPushButton(Drive.State){
     .ref = &drive_y_state,
@@ -247,19 +238,6 @@ const items: []const Item = &.{
                     .{ .value = simulator_driving_time_s.value() },
                 },
             } },
-            .{ .popup = .{
-                .str = " current sensor\n",
-                .items = &.{
-                    .{ .label = "samp ms:" },
-                    .{ .value = current_sensor_sampling_time_ms.value() },
-                    .{ .label = "\nnr of samp:" },
-                    .{ .value = current_sensor_nr_of_samples.value() },
-                    .{ .label = "\npause cs:" },
-                    .{ .value = current_sensor_pause_time_cs.value() },
-                    .{ .label = "\nthreshold:" },
-                    .{ .value = current_sensor_threshold.value() },
-                },
-            } },
             .{ .label = "Backlight:" },
             .{ .value = back_light.value() },
         },
@@ -277,20 +255,20 @@ const items: []const Item = &.{
             .str = " drive Y\n",
             .items = drive_y_ui.ui(),
         } },
-        .{ .label = "simulator:" },
-        .{ .value = use_simulator.value() },
     } } },
-    .{ .popup = .{
-        .str = " current sensor\n",
-        .items = &.{
-            .{ .label = "enbl:" },
-            .{ .value = current_sensor_enable.value(.{ .db = uib.button3, .behaviour = .toggle_button }) },
-            .{ .label = " rel:" },
-            .{ .value = pb_relais_a.value(.{ .db = uib.button4, .behaviour = .toggle_button }) },
-            .{ .label = "value:" },
-            .{ .value = current_sensor_value.value() },
+    .{
+        .popup = .{
+            .str = " sim,cook enbl\n",
+            .items = &.{
+                .{ .label = "cook enable:" },
+                .{ .value = IO.cook_enable.sampleValue() },
+                .{ .label = "\nsim:" },
+                .{ .value = use_simulator.value(.{ .db = uib.button3, .behaviour = .toggle_button }) },
+                .{ .label = " enbl:" },
+                .{ .value = pb_cook_enable.value(.{ .db = uib.button4, .behaviour = .toggle_button }) },
+            },
         },
-    } },
+    },
     .{ .popup = .{
         .str = " output test\n",
         .items = &.{
@@ -422,21 +400,14 @@ fn timer_interrupt_handler() callconv(.c) void {
     defer cs.leave();
     const t = time.get_time_since_boot();
     var dt_us: u32 = undefined;
-    switch (IO.current_sensor.sample(t) catch .later) {
-        .soon => {
-            dt_us = @as(u32, @max(Config.values.current_sensor_sampling_time_ms, 1)) * 1_000;
-        },
-        .later => {
-            if (IO.use_simulator) {
-                IO.x_sim.sample(t); // set state of input devices
-                IO.y_sim.sample(t);
-                dt_us = @as(u32, @max(Config.values.simulator_sampling_time_cs, 1)) *| 10_000;
-            } else {
-                dt_us = @as(u32, @max(Config.values.timer_sampling_time_cs, 1)) *| 10_000;
-            }
-            if (IO.pos_control.sample(t)) {} else |_| {}
-        },
+    if (IO.use_simulator) {
+        IO.x_sim.sample(t); // set state of input devices
+        IO.y_sim.sample(t);
+        dt_us = @as(u32, @max(Config.values.simulator_sampling_time_cs, 1)) *| 10_000;
+    } else {
+        dt_us = @as(u32, @max(Config.values.timer_sampling_time_cs, 1)) *| 10_000;
     }
+    if (IO.pos_control.sample(t)) {} else |_| {}
     timer0.clear_interrupt(.alarm0);
     timer0.schedule_alarm(.alarm0, timer0.read_low() +% dt_us);
 }

@@ -9,7 +9,7 @@ const Self = @This();
 
 pin: Digital_IO, // = null,
 active: Digital_IO.State = .high,
-buf: [3]u8 = .{ '(', 'E', ')' },
+buf: [3]u8 = .{ '<', 'E', '>' },
 last_change: time.Absolute = .from_us(0),
 is_active: bool = false,
 min_switch_time: time.Duration = .from_ms(10),
