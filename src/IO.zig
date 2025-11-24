@@ -68,12 +68,15 @@ pub const i2c0 = rp2xxx.i2c.instance.num(0);
 pub var lcd_reset = iod.lcd_reset.digital_io();
 // not io related, but let live here for now.
 pub var use_simulator: bool = false;
+pub var use_delaying: bool = false;
 pub var cook_enable_sim: IOState = .high;
 
 pub var i2c_device = I2C_Device.init(i2c0, null);
 pub var x_sim = MotionSimulator{
     .switching_time_cs = &Config.values.simulator_switching_time_cs,
     .driving_time_s = &Config.values.simulator_driving_time_s,
+    .delaying_time_cs = &Config.values.simulator_delaying_time_cs,
+    .delaying = &use_delaying,
     .active = .low,
     .inactive = .high,
     .min_pin = .high,
@@ -83,6 +86,8 @@ pub var x_sim = MotionSimulator{
 pub var y_sim = MotionSimulator{
     .switching_time_cs = &Config.values.simulator_switching_time_cs,
     .driving_time_s = &Config.values.simulator_driving_time_s,
+    .delaying_time_cs = &Config.values.simulator_delaying_time_cs,
+    .delaying = &use_delaying,
     .active = .low,
     .inactive = .high,
     .min_pin = .high,
@@ -158,6 +163,7 @@ pub var drive_x_control = DriveControl{
     .max_bt = &pos_x_max,
     .min_coord = &Config.values.allowed_area.x.min,
     .max_coord = &Config.values.allowed_area.x.max,
+    .max_segment_duration_ds = &Config.values.x_max_segment_duration_ds,
 };
 pub var drive_y_control = DriveControl{
     .drive = &drive_y,
@@ -166,6 +172,7 @@ pub var drive_y_control = DriveControl{
     .max_bt = &pos_y_max,
     .min_coord = &Config.values.allowed_area.y.min,
     .max_coord = &Config.values.allowed_area.y.max,
+    .max_segment_duration_ds = &Config.values.y_max_segment_duration_ds,
 };
 
 pub var pos_control = PosControl{

@@ -10,9 +10,9 @@ const Self = @This();
 
 const ClickBt = ClickButton(DriveControl);
 const Int = RoRefIntValue(i8, 3, 10);
-const State = EnumRefValue(DriveControl.State, [_][]const u8{ "stp", "lim", "mov", "pau" });
-const Dir = EnumRefValue(DriveControl.Direction, [_][]const u8{ "un", "fw", "bw" });
-const Dev = EnumRefValue(DriveControl.Deviation, [_][]const u8{ "ex", "sm", "co" });
+const State = EnumRefValue(DriveControl.State, [_][]const u8{ "s", "l", "e", "m", "p" });
+const Dir = EnumRefValue(DriveControl.Direction, [_][]const u8{ "u", "f", "b" });
+const Dev = EnumRefValue(DriveControl.Deviation, [_][]const u8{ "x", "o" });
 
 stopBt: ClickBt,
 fwBt: ClickBt,
@@ -59,13 +59,13 @@ pub fn create(dc: *DriveControl) Self {
 
 pub fn ui(self: *Self) []const Item {
     return &.{
-        .{ .value = self.state.value() }, // 3
-        .{ .value = self.dir.value() }, // 2
+        .{ .value = self.state.value() }, // 1
+        .{ .value = self.dir.value() }, // 1
         // .{ .label = "  " },
         .{ .value = self.pos_coord.value() }, // 3
-        .{ .value = self.pos_dir.value() }, // 2
-        .{ .value = self.pos_dev.value() }, // 2
-        // .{ .label = " =>" },
+        .{ .value = self.pos_dir.value() }, // 1
+        .{ .value = self.pos_dev.value() }, // 1
+        .{ .label = " =>" }, // 3
         .{ .value = self.target_coord.value() }, // 3
         .{ .label = "\n" },
         .{ .label = "#" },
@@ -116,7 +116,7 @@ fn stopClicked(dc: *DriveControl) void {
 
 fn origEnabled(dc: *DriveControl) bool {
     return switch (dc.state) {
-        .stoped, .limited => true,
+        .stoped, .paused, .limited, .time_exceeded => true,
         else => false,
     };
 }

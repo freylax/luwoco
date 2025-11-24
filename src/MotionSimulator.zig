@@ -7,9 +7,9 @@ const time = drivers.time;
 
 const Self = @This();
 
-pub const State = enum { stoped, moving };
+pub const State = enum { stoped, delaying, moving };
 
-pub const Deviation = enum(u2) { exact, coarse };
+pub const Deviation = enum(u2) { exact, between };
 pub const Direction = enum(u2) { unspec, forward, backward };
 
 pub const Position = struct {
@@ -20,6 +20,8 @@ pub const Position = struct {
 
 switching_time_cs: *u8,
 driving_time_s: *u8,
+delaying_time_cs: *u8,
+delaying: *bool,
 active: IOState,
 inactive: IOState,
 min_pin: IOState,
@@ -42,7 +44,7 @@ pub fn sample(self: *Self, sample_time: time.Absolute) void {
                     const dir: Direction = if (self.dir_a_pin == .high) .forward else if (self.dir_b_pin == .high) .backward else .unspec;
                     switch (self.pos.dev) {
                         .exact => {}, // start from exact position
-                        .coarse => { // start from inbetween
+                        .between => { // start from inbetween
                             if (dir != self.pos.dir) {
                                 // correct coord if we have a direction change
                                 self.pos.coord += switch (dir) {
@@ -68,12 +70,12 @@ pub fn sample(self: *Self, sample_time: time.Absolute) void {
                         .exact => {
                             const switching_time: time.Duration = .from_ms(@as(u64, self.switching_time_cs.*) *| 10);
                             if (switching_time.less_than(dt)) {
-                                self.pos.dev = .coarse;
+                                self.pos.dev = .between;
                                 self.pos_pin = self.inactive;
                                 self.last_change = sample_time;
                             }
                         },
-                        .coarse => {
+                        .between => {
                             const driving_time: time.Duration = .from_ms(@as(u64, self.driving_time_s.*) *| 1000);
                             if (driving_time.less_than(dt)) {
                                 // we arrive at the next coord
@@ -83,7 +85,7 @@ pub fn sample(self: *Self, sample_time: time.Absolute) void {
                                 if (self.dir_a_pin == .high) {
                                     self.pos.coord += 1;
                                 }
-                                if (self.dir_a_pin == .high) {
+                                if (self.dir_b_pin == .high) {
                                     self.pos.coord -= 1;
                                 }
                             }
@@ -91,9 +93,11 @@ pub fn sample(self: *Self, sample_time: time.Absolute) void {
                     }
                 },
                 .low => {
+                    // drive was stoped
                     self.state = .stoped;
                 },
             }
         },
+        .delaying => {},
     }
 }

@@ -80,37 +80,27 @@ pub fn sample(self: *Self, sample_time: time.Absolute) !void {
     switch (self.state) {
         .moving => {
             switch (self.axis) {
-                .xy => {
-                    // initial pos
-                    if (dx.state == .stoped and dy.state == .stoped) {
-                        self.axis = .x;
-                        try self.start_cooking(sample_time);
-                    }
+                // initial pos
+                .xy => if (dx.state == .stoped and dy.state == .stoped) {
+                    self.axis = .x;
+                    try self.start_cooking(sample_time);
                 },
-                .x => {
-                    if (dx.state == .stoped) {
-                        switch (self.x_dir) {
-                            .forward => {
-                                if (dx.pos.coord == wa.x.max.*) {
-                                    self.axis = .y;
-                                    self.x_dir = .backward;
-                                }
-                            },
-                            .backward => {
-                                if (dx.pos.coord == wa.x.min.*) {
-                                    self.axis = .y;
-                                    self.x_dir = .forward;
-                                }
-                            },
-                        }
-                        try self.start_cooking(sample_time);
+                .x => if (dx.state == .stoped) {
+                    switch (self.x_dir) {
+                        .forward => if (dx.pos.coord == wa.x.max.*) {
+                            self.axis = .y;
+                            self.x_dir = .backward;
+                        },
+                        .backward => if (dx.pos.coord == wa.x.min.*) {
+                            self.axis = .y;
+                            self.x_dir = .forward;
+                        },
                     }
+                    try self.start_cooking(sample_time);
                 },
-                .y => {
-                    if (dy.state == .stoped) {
-                        self.axis = .x;
-                        try self.start_cooking(sample_time);
-                    }
+                .y => if (dy.state == .stoped) {
+                    self.axis = .x;
+                    try self.start_cooking(sample_time);
                 },
             }
         },
@@ -129,10 +119,7 @@ pub fn sample(self: *Self, sample_time: time.Absolute) !void {
                 },
                 false => {
                     switch (self.cook_relais.state) {
-                        .on => {
-                            // switch cook off
-                            try self.cook_relais.set(.off);
-                        },
+                        .on => try self.cook_relais.set(.off), // switch cook off
                         .off => {},
                     }
                     // stop timer
@@ -154,23 +141,15 @@ pub fn sample(self: *Self, sample_time: time.Absolute) !void {
                 switch (self.axis) {
                     .x => {
                         switch (self.x_dir) {
-                            .forward => {
-                                try dx.stepForward();
-                            },
-                            .backward => {
-                                try dx.stepBackward();
-                            },
+                            .forward => try dx.stepForward(),
+                            .backward => try dx.stepBackward(),
                         }
                         self.state = .moving;
                     },
                     .y => {
                         switch (self.y_dir) {
-                            .forward => {
-                                try dy.stepForward();
-                            },
-                            .backward => {
-                                try dy.stepBackward();
-                            },
+                            .forward => try dy.stepForward(),
+                            .backward => try dy.stepBackward(),
                         }
                         self.state = .moving;
                     },

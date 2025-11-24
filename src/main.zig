@@ -119,7 +119,14 @@ var work_area = wablk: {
         .{ .min = &zero, .max = &aa.y.max },
     );
 };
-
+var x_max_segment_duration_ds = IntValue(*u8, u8, 4, 10){
+    .range = .{ .min = 0, .max = 255 },
+    .val = &Config.values.x_max_segment_duration_ds,
+};
+var y_max_segment_duration_ds = IntValue(*u8, u8, 4, 10){
+    .range = .{ .min = 0, .max = 255 },
+    .val = &Config.values.y_max_segment_duration_ds,
+};
 var timer_sampling_time_cs = IntValue(*u8, u8, 4, 10){
     .range = .{ .min = 1, .max = 255 },
     .val = &Config.values.timer_sampling_time_cs,
@@ -136,20 +143,30 @@ var simulator_driving_time_s = IntValue(*u8, u8, 4, 10){
     .range = .{ .min = 0, .max = 255 },
     .val = &Config.values.simulator_driving_time_s,
 };
+var simulator_delaying_time_cs = IntValue(*u8, u8, 4, 10){
+    .range = .{ .min = 0, .max = 255 },
+    .val = &Config.values.simulator_delaying_time_cs,
+};
 var use_simulator = RefPushButton(bool){
     .ref = &IO.use_simulator,
     .pressed = true,
     .released = false,
     .id = EventId.set_timer_interrupt.id(),
 };
-fn pb_cook_enable_enabled() bool {
+fn is_simulator_used() bool {
     return IO.use_simulator;
 }
+var use_delaying = RefPushButton(bool){
+    .ref = &IO.use_delaying,
+    .pressed = true,
+    .released = false,
+    .enabled = is_simulator_used,
+};
 var pb_cook_enable = RefPushButton(IOState){
     .ref = &IO.cook_enable_sim,
     .pressed = .low,
     .released = .high,
-    .enabled = pb_cook_enable_enabled,
+    .enabled = is_simulator_used,
 };
 var pb_save_config = ClickButton(Config){
     .ref = &Config.values,
@@ -224,6 +241,12 @@ const items: []const Item = &.{
             .{ .label = "cool tm dm:" },
             .{ .value = cooling_time.value() },
             .{ .label = "\n" },
+            .{ .label = "x maxseg ds:" },
+            .{ .value = x_max_segment_duration_ds.value() },
+            .{ .label = "\n" },
+            .{ .label = "y maxseg ds:" },
+            .{ .value = y_max_segment_duration_ds.value() },
+            .{ .label = "\n" },
             .{ .label = "smpl tm cs:" },
             .{ .value = timer_sampling_time_cs.value() },
             .{ .label = "\n" },
@@ -236,6 +259,8 @@ const items: []const Item = &.{
                     .{ .value = simulator_switching_time_cs.value() },
                     .{ .label = "\ndriv s:" },
                     .{ .value = simulator_driving_time_s.value() },
+                    .{ .label = "\ndelay cs:" },
+                    .{ .value = simulator_delaying_time_cs.value() },
                 },
             } },
             .{ .label = "Backlight:" },
@@ -262,10 +287,12 @@ const items: []const Item = &.{
             .items = &.{
                 .{ .label = "cook enable:" },
                 .{ .value = IO.cook_enable.sampleValue() },
-                .{ .label = "\nsim:" },
-                .{ .value = use_simulator.value(.{ .db = uib.button3, .behaviour = .toggle_button }) },
-                .{ .label = " enbl:" },
-                .{ .value = pb_cook_enable.value(.{ .db = uib.button4, .behaviour = .toggle_button }) },
+                .{ .label = "\nsm" },
+                .{ .value = use_simulator.value(.{ .db = uib.button2, .behaviour = .toggle_button }) },
+                .{ .label = "en" },
+                .{ .value = pb_cook_enable.value(.{ .db = uib.button3, .behaviour = .toggle_button }) },
+                .{ .label = "dl" },
+                .{ .value = use_delaying.value(.{ .db = uib.button4, .behaviour = .toggle_button }) },
             },
         },
     },
