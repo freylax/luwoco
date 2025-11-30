@@ -35,7 +35,8 @@ work_area: Area,
 x_dir: Dir = .forward,
 y_dir: Dir = .forward,
 axis: Axis = .xy,
-
+x: i8 = 0,
+y: i8 = 0,
 steps: u16 = 0,
 timer_us: u64 = 0,
 timer_s: u16 = 0,
@@ -140,17 +141,19 @@ pub fn sample(self: *Self, sample_time: time.Absolute) !void {
                 self.steps -= 1;
                 switch (self.axis) {
                     .x => {
-                        switch (self.x_dir) {
-                            .forward => try dx.stepForward(),
-                            .backward => try dx.stepBackward(),
-                        }
+                        self.x += switch (self.x_dir) {
+                            .forward => 1,
+                            .backward => -1,
+                        };
+                        try dx.goto(self.x);
                         self.state = .moving;
                     },
                     .y => {
-                        switch (self.y_dir) {
-                            .forward => try dy.stepForward(),
-                            .backward => try dy.stepBackward(),
-                        }
+                        self.y += switch (self.y_dir) {
+                            .forward => 1,
+                            .backward => -1,
+                        };
+                        try dy.goto(self.y);
                         self.state = .moving;
                     },
                     .xy => {},
@@ -172,18 +175,20 @@ pub fn start(self: *Self) !void {
             // find out which is the closest start position to the current position
             if (@abs(wa.x.max.* - dx.pos.coord) <= @abs(wa.x.min.* - dx.pos.coord)) {
                 self.x_dir = .backward;
-                try dx.goto(wa.x.max.*);
+                self.x = wa.x.max.*;
             } else {
                 self.x_dir = .forward;
-                try dx.goto(wa.x.min.*);
+                self.x = wa.x.min.*;
             }
             if (@abs(wa.y.max.* - dy.pos.coord) <= @abs(wa.y.min.* - dy.pos.coord)) {
                 self.y_dir = .backward;
-                try dy.goto(wa.y.max.*);
+                self.y = wa.y.max.*;
             } else {
                 self.y_dir = .forward;
-                try dy.goto(wa.y.min.*);
+                self.y = wa.y.min.*;
             }
+            try dx.goto(self.x);
+            try dy.goto(self.y);
             self.state = .moving;
             self.axis = .xy;
         },
