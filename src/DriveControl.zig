@@ -13,6 +13,7 @@ pub const State = enum {
     time_exceeded,
     moving,
     paused,
+    go_to_origin,
 };
 
 pub const Deviation = enum(u2) { exact, between };
@@ -26,8 +27,8 @@ pub const Position = struct {
 
 drive: *Drive,
 pos_bt: *SampleButton,
-min_bt: *SampleButton,
-max_bt: *SampleButton,
+ori_bt: *SampleButton,
+lim_bt: *SampleButton,
 min_coord: *i8,
 max_coord: *i8,
 max_segment_duration_ds: *u8,
@@ -38,22 +39,9 @@ target_coord: i8 = 0,
 state: State = .stoped,
 segment_start: dtime.Absolute = .from_us(0),
 dir_change: bool = false,
-timeout: bool = false,
 minimal_driving_time: dtime.Duration = .from_ms(500), // half a second
-const Context = enum { switch_activated, timeout };
 
-fn is_moving(self: *Self, sample_time: dtime.Absolute, context: Context) !void {
-    if (context == .switch_activated and self.timeout and !self.dir_change) {
-        // check the time from start segment, if it is small we skip the reaction
-        // of the switch
-        const dt = sample_time.diff(self.segment_start);
-        const max_t = self.avg_segment_duration / 10; // 10% of average
-        if (max_t != 0 and !dt.less_than(dtime.Duration.from_us(max_t))) {
-            self.segment_start = sample_time;
-            self.timeout = false;
-            return;
-        }
-    }
+fn is_moving(self: *Self, sample_time: dtime.Absolute) !void {
     const p = &self.pos;
     switch (p.dir) {
         // last position was in forward direction
@@ -91,21 +79,11 @@ fn is_moving(self: *Self, sample_time: dtime.Absolute, context: Context) !void {
         .unspec => p.dir = self.dir,
     }
     p.dev = .exact;
-    switch (context) {
-        .switch_activated => {
-            if (!self.timeout) {
-                const dt = sample_time.diff(self.segment_start).to_us();
-                if (self.avg_segment_duration == 0) {
-                    self.avg_segment_duration = dt;
-                } else {
-                    self.avg_segment_duration = (self.avg_segment_duration + dt) / 2;
-                }
-            }
-            self.timeout = false;
-        },
-        .timeout => {
-            self.timeout = true;
-        },
+    const dt = sample_time.diff(self.segment_start).to_us();
+    if (self.avg_segment_duration == 0) {
+        self.avg_segment_duration = dt;
+    } else {
+        self.avg_segment_duration = (self.avg_segment_duration + dt) / 2;
     }
     self.segment_start = sample_time;
     self.dir_change = false;
@@ -121,38 +99,50 @@ fn is_moving(self: *Self, sample_time: dtime.Absolute, context: Context) !void {
 }
 
 pub fn sample(self: *Self, sample_time: dtime.Absolute) !void {
-    const min_ev = try self.min_bt.sample(sample_time);
-    const max_ev = try self.max_bt.sample(sample_time);
+    // const ori_ev = try self.ori_bt.sample(sample_time);
+    const lim_ev = try self.lim_bt.sample(sample_time);
     const pos_ev = try self.pos_bt.sample(sample_time);
-    if (min_ev == .changed_to_active) {
-        // std.log.info("dc:sample min_ev changed to active", .{});
-        try self.drive.set(.off);
-        self.state = .limited;
-        self.pos.dir = .backward;
-        return;
-    }
-    if (max_ev == .changed_to_active) {
-        // std.log.info("dc:sample max_ev changed to active", .{});
-        try self.drive.set(.off);
-        self.state = .limited;
-        self.pos.dir = .forward;
-        return;
+    switch (lim_ev) {
+        .changed_to_active => {
+            switch (self.pos_bt.is_active) {
+                true => {
+                    // origin position reached
+                    if (self.state == .go_to_origin) {
+                        try self.drive.set(.off);
+                        self.pos.coord = 0;
+                        self.target_coord = 0;
+                        self.state = .stoped;
+                        return;
+                    }
+                },
+                false => {
+                    // limit reached
+                    try self.drive.set(.off);
+                    self.state = .limited;
+                    self.pos.dir = switch (self.ori_bt.is_active) {
+                        true => .forward,
+                        false => .backward,
+                    };
+                    return;
+                },
+            }
+        },
+        else => {},
     }
     const p = &self.pos;
     switch (pos_ev) {
         .changed_to_active => {
-            // std.log.info("dc:change_to_active1, coord={d},min={d},max={d}", .{ p.coord, self.min_coord.*, self.max_coord.* });
             switch (self.state) {
-                .moving => try self.is_moving(sample_time, .switch_activated),
+                .moving => try self.is_moving(sample_time),
                 // a backslide of the trolley activates the switch again
                 .stoped, .paused => p.dev = .exact,
-                .limited, .time_exceeded => {},
+                .limited, .time_exceeded, .go_to_origin => {},
             }
         },
         .changed_to_inactive => {
             // std.log.info("dc:change_to_inactive", .{});
             switch (self.state) {
-                .moving => {
+                .moving, .go_to_origin => {
                     p.dir = self.dir;
                     p.dev = .between;
                 },
@@ -166,7 +156,6 @@ pub fn sample(self: *Self, sample_time: dtime.Absolute) !void {
                 const max_t = dtime.Duration.from_ms(@as(u64, self.max_segment_duration_ds.*) *| 100);
                 // const max_t = self.avg_segment_duration + self.avg_segment_duration / 20; // 5% more as average
                 if (max_t.to_us() != 0 and !dt.less_than(max_t)) {
-                    // try self.is_moving(sample_time,.timeout);
                     try self.drive.set(.off);
                     self.state = .time_exceeded;
                 }
@@ -190,7 +179,7 @@ pub fn stepForward(self: *Self) !void {
                 else => {},
             }
         },
-        .moving, .time_exceeded => {},
+        .moving, .go_to_origin, .time_exceeded => {},
     }
 }
 
@@ -209,7 +198,7 @@ pub fn stepBackward(self: *Self) !void {
                 else => {},
             }
         },
-        .moving, .time_exceeded => {},
+        .moving, .go_to_origin, .time_exceeded => {},
     }
 }
 
@@ -225,7 +214,7 @@ pub fn goto(self: *Self, coord: i8) !void {
                 try self.start_drive(.backward);
             }
         },
-        .moving, .time_exceeded => {},
+        .moving, .go_to_origin, .time_exceeded => {},
     }
 }
 
@@ -244,7 +233,7 @@ fn start_drive(self: *Self, dir: Direction) !void {
 
 pub fn stop(self: *Self) !void {
     switch (self.state) {
-        .moving => {
+        .moving, .go_to_origin => {
             try self.drive.set(.off);
             self.state = .stoped;
         },
@@ -269,12 +258,27 @@ pub fn @"continue"(self: *Self) !void {
     }
 }
 
-pub fn setOrigin(self: *Self) void {
+pub fn goToOrigin(self: *Self) !void {
     switch (self.state) {
         .stoped, .paused, .limited, .time_exceeded => {
-            self.pos.coord = 0;
-            self.target_coord = 0;
-            self.state = .stoped;
+            if (self.pos_bt.is_active and self.lim_bt.is_active) {
+                // already at origin
+                self.pos.coord = 0;
+                self.target_coord = 0;
+                self.state = .stoped;
+            } else {
+                switch (self.ori_bt.is_active) {
+                    true => {
+                        try self.drive.set(.dir_b);
+                        self.dir = .backward;
+                    },
+                    false => {
+                        try self.drive.set(.dir_a);
+                        self.dir = .forward;
+                    },
+                }
+                self.state = .go_to_origin;
+            }
         },
         else => {},
     }
@@ -284,11 +288,22 @@ pub fn setOrigin(self: *Self) void {
 
 pub fn begin(self: *Self) !void {
     // if we use the device in simulation mode both are active!
-    if (self.max_bt.is_active and !self.min_bt.is_active) {
-        self.state = .limited;
-        self.pos.dir = .forward;
-    } else if (self.min_bt.is_active and !self.max_bt.is_active) {
-        self.state = .limited;
-        self.pos.dir = .backward;
+    switch (self.lim_bt.is_active) {
+        true => {
+            switch (self.pos_bt.is_active) {
+                true => {
+                    // we are on the origin
+                },
+                false => {
+                    // limit was reached
+                    self.state = .limited;
+                    self.pos.dir = switch (self.ori_bt.is_active) {
+                        true => .forward,
+                        false => .backward,
+                    };
+                },
+            }
+        },
+        false => {},
     }
 }

@@ -10,7 +10,7 @@ const Self = @This();
 
 const ClickBt = ClickButton(DriveControl);
 const Int = RoRefIntValue(i8, 3, 10);
-const State = EnumRefValue(DriveControl.State, [_][]const u8{ "s", "l", "e", "m", "p" });
+const State = EnumRefValue(DriveControl.State, [_][]const u8{ "s", "l", "e", "m", "p", "o" });
 const Dir = EnumRefValue(DriveControl.Direction, [_][]const u8{ "u", "f", "b" });
 const Dev = EnumRefValue(DriveControl.Deviation, [_][]const u8{ "x", "o" });
 
@@ -122,5 +122,5 @@ fn origEnabled(dc: *DriveControl) bool {
 }
 
 fn origClicked(dc: *DriveControl) void {
-    dc.setOrigin();
+    dc.goToOrigin() catch {};
 }

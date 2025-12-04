@@ -32,11 +32,11 @@ const pin_config = rp2xxx.pins.GlobalConfiguration{
     .GPIO14 = .{ .name = "relais_a", .direction = .out },
     .GPIO15 = .{ .name = "relais_b", .direction = .out },
     .GPIO16 = .{ .name = "pos_x_pos", .direction = .in, .pull = .up },
-    .GPIO17 = .{ .name = "pos_x_min", .direction = .in, .pull = .up },
-    .GPIO18 = .{ .name = "pos_x_max", .direction = .in, .pull = .up },
+    .GPIO17 = .{ .name = "pos_x_ori", .direction = .in, .pull = .up },
+    .GPIO18 = .{ .name = "pos_x_lim", .direction = .in, .pull = .up },
     .GPIO19 = .{ .name = "pos_y_pos", .direction = .in, .pull = .up },
-    .GPIO20 = .{ .name = "pos_y_min", .direction = .in, .pull = .up },
-    .GPIO21 = .{ .name = "pos_y_max", .direction = .in, .pull = .up },
+    .GPIO20 = .{ .name = "pos_y_ori", .direction = .in, .pull = .up },
+    .GPIO21 = .{ .name = "pos_y_lim", .direction = .in, .pull = .up },
     .GPIO22 = .{ .name = "cook_enable", .direction = .in, .pull = .up },
     .GPIO25 = .{ .name = "led", .direction = .out },
 };
@@ -46,11 +46,11 @@ const pins = pin_config.pins();
 const iod = struct {
     var lcd_reset = GPIO_Device.init(pins.lcd_reset);
     var pos_x_pos = GPIO_Device.init(pins.pos_x_pos);
-    var pos_x_min = GPIO_Device.init(pins.pos_x_min);
-    var pos_x_max = GPIO_Device.init(pins.pos_x_max);
+    var pos_x_ori = GPIO_Device.init(pins.pos_x_ori);
+    var pos_x_lim = GPIO_Device.init(pins.pos_x_lim);
     var pos_y_pos = GPIO_Device.init(pins.pos_y_pos);
-    var pos_y_min = GPIO_Device.init(pins.pos_y_min);
-    var pos_y_max = GPIO_Device.init(pins.pos_y_max);
+    var pos_y_ori = GPIO_Device.init(pins.pos_y_ori);
+    var pos_y_lim = GPIO_Device.init(pins.pos_y_lim);
     var drive_x_enable = GPIO_Device.init(pins.drive_x_enable);
     var drive_x_dir_a = GPIO_Device.init(pins.drive_x_dir_a);
     var drive_x_dir_b = GPIO_Device.init(pins.drive_x_dir_b);
@@ -79,8 +79,8 @@ pub var x_sim = MotionSimulator{
     .delaying = &use_delaying,
     .active = .low,
     .inactive = .high,
-    .min_pin = .high,
-    .max_pin = .high,
+    .ori_pin = .high,
+    .lim_pin = .high,
     .pos_pin = .low,
 };
 pub var y_sim = MotionSimulator{
@@ -90,8 +90,8 @@ pub var y_sim = MotionSimulator{
     .delaying = &use_delaying,
     .active = .low,
     .inactive = .high,
-    .min_pin = .high,
-    .max_pin = .high,
+    .ori_pin = .high,
+    .lim_pin = .high,
     .pos_pin = .low,
 };
 pub var pos_x_pos = SampleButton{
@@ -100,16 +100,16 @@ pub var pos_x_pos = SampleButton{
     .simulator_pin = &x_sim.pos_pin,
     .use_simulator = &use_simulator,
 };
-pub var pos_x_min = SampleButton{
-    .pin = iod.pos_x_min.digital_io(),
+pub var pos_x_ori = SampleButton{
+    .pin = iod.pos_x_ori.digital_io(),
     .active = .low,
-    .simulator_pin = &x_sim.min_pin,
+    .simulator_pin = &x_sim.ori_pin,
     .use_simulator = &use_simulator,
 };
-pub var pos_x_max = SampleButton{
-    .pin = iod.pos_x_max.digital_io(),
+pub var pos_x_lim = SampleButton{
+    .pin = iod.pos_x_lim.digital_io(),
     .active = .low,
-    .simulator_pin = &x_sim.max_pin,
+    .simulator_pin = &x_sim.lim_pin,
     .use_simulator = &use_simulator,
 };
 pub var pos_y_pos = SampleButton{
@@ -118,16 +118,16 @@ pub var pos_y_pos = SampleButton{
     .simulator_pin = &y_sim.pos_pin,
     .use_simulator = &use_simulator,
 };
-pub var pos_y_min = SampleButton{
-    .pin = iod.pos_y_min.digital_io(),
+pub var pos_y_ori = SampleButton{
+    .pin = iod.pos_y_ori.digital_io(),
     .active = .low,
-    .simulator_pin = &y_sim.min_pin,
+    .simulator_pin = &y_sim.ori_pin,
     .use_simulator = &use_simulator,
 };
-pub var pos_y_max = SampleButton{
-    .pin = iod.pos_y_max.digital_io(),
+pub var pos_y_lim = SampleButton{
+    .pin = iod.pos_y_lim.digital_io(),
     .active = .low,
-    .simulator_pin = &y_sim.max_pin,
+    .simulator_pin = &y_sim.lim_pin,
     .use_simulator = &use_simulator,
 };
 pub var cook_enable = SampleButton{
@@ -159,8 +159,8 @@ pub var relais_b = Relais{ .pin = iod.relais_b.digital_io() };
 pub var drive_x_control = DriveControl{
     .drive = &drive_x,
     .pos_bt = &pos_x_pos,
-    .min_bt = &pos_x_min,
-    .max_bt = &pos_x_max,
+    .ori_bt = &pos_x_ori,
+    .lim_bt = &pos_x_lim,
     .min_coord = &Config.values.allowed_area.x.min,
     .max_coord = &Config.values.allowed_area.x.max,
     .max_segment_duration_ds = &Config.values.x_max_segment_duration_ds,
@@ -168,8 +168,8 @@ pub var drive_x_control = DriveControl{
 pub var drive_y_control = DriveControl{
     .drive = &drive_y,
     .pos_bt = &pos_y_pos,
-    .min_bt = &pos_y_min,
-    .max_bt = &pos_y_max,
+    .ori_bt = &pos_y_ori,
+    .lim_bt = &pos_y_lim,
     .min_coord = &Config.values.allowed_area.y.min,
     .max_coord = &Config.values.allowed_area.y.max,
     .max_segment_duration_ds = &Config.values.y_max_segment_duration_ds,
@@ -230,11 +230,11 @@ pub fn begin() !void {
 
     const t = time.get_time_since_boot();
     _ = try pos_x_pos.sample(t);
-    _ = try pos_x_min.sample(t);
-    _ = try pos_x_max.sample(t);
+    _ = try pos_x_ori.sample(t);
+    _ = try pos_x_lim.sample(t);
     _ = try pos_y_pos.sample(t);
-    _ = try pos_y_min.sample(t);
-    _ = try pos_y_max.sample(t);
+    _ = try pos_y_ori.sample(t);
+    _ = try pos_y_lim.sample(t);
     try drive_x_control.begin();
     try drive_y_control.begin();
 }
