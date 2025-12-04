@@ -182,6 +182,7 @@ pub var pos_control = PosControl{
     .cook_enable = &cook_enable,
     .cooking_time_dm = &Config.values.cooking_time_dm,
     .cooling_time_dm = &Config.values.cooling_time_dm,
+    .after_move_time_ds = &Config.values.after_move_time_ds,
     .work_area = wablk: {
         const wa = &Config.values.work_area;
         break :wablk .{

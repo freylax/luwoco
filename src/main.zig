@@ -88,6 +88,7 @@ var back_light = IntValue(*u8, u8, 4, 10){ .range = .{ .min = 0, .max = 255 }, .
 
 var cooking_time = IntValue(*u8, u8, 4, 10){ .range = .{ .min = 0, .max = 255 }, .val = &Config.values.cooking_time_dm };
 var cooling_time = IntValue(*u8, u8, 4, 10){ .range = .{ .min = 0, .max = 255 }, .val = &Config.values.cooling_time_dm };
+var after_move_time = IntValue(*u8, u8, 4, 10){ .range = .{ .min = 0, .max = 255 }, .val = &Config.values.after_move_time_ds };
 
 const AreaUIV = areaUI.AreaUI(*i8, i8, 3);
 var allowed_area = aablk: {
@@ -242,6 +243,8 @@ const items: []const Item = &.{
                 .{ .label = "cool tm dm:" },
                 .{ .value = cooling_time.value() },
                 .{ .label = "\n" },
+                .{ .label = "after mv ds:" },
+                .{ .value = after_move_time.value() },
                 .{ .label = "x maxseg ds:" },
                 .{ .value = x_max_segment_duration_ds.value() },
                 // .{ .label = "\n" },

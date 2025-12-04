@@ -31,13 +31,94 @@ max_bt: *SampleButton,
 min_coord: *i8,
 max_coord: *i8,
 max_segment_duration_ds: *u8,
+avg_segment_duration: u64 = 0,
 pos: Position = Position{},
 dir: Direction = .unspec,
 target_coord: i8 = 0,
 state: State = .stoped,
 segment_start: dtime.Absolute = .from_us(0),
 dir_change: bool = false,
+timeout: bool = false,
 minimal_driving_time: dtime.Duration = .from_ms(500), // half a second
+const Context = enum { switch_activated, timeout };
+
+fn is_moving(self: *Self, sample_time: dtime.Absolute, context: Context) !void {
+    if (context == .switch_activated and self.timeout and !self.dir_change) {
+        // check the time from start segment, if it is small we skip the reaction
+        // of the switch
+        const dt = sample_time.diff(self.segment_start);
+        const max_t = self.avg_segment_duration / 10; // 10% of average
+        if (max_t != 0 and !dt.less_than(dtime.Duration.from_us(max_t))) {
+            self.segment_start = sample_time;
+            self.timeout = false;
+            return;
+        }
+    }
+    const p = &self.pos;
+    switch (p.dir) {
+        // last position was in forward direction
+        .forward => {
+            switch (self.dir) {
+                .forward => if (!(self.dir_change and sample_time.diff(self.segment_start).less_than(self.minimal_driving_time))) {
+                    p.coord += 1;
+                },
+                .backward => {
+                    p.dir = .backward;
+                    switch (p.dev) {
+                        .exact => p.coord -= 1,
+                        .between => {},
+                    }
+                },
+                .unspec => {},
+            }
+        },
+        // last position was in backward direction
+        .backward => {
+            switch (self.dir) {
+                .forward => {
+                    p.dir = .forward;
+                    switch (p.dev) {
+                        .exact => p.coord += 1,
+                        .between => {},
+                    }
+                },
+                .backward => if (!(self.dir_change and sample_time.diff(self.segment_start).less_than(self.minimal_driving_time))) {
+                    p.coord -= 1;
+                },
+                .unspec => {},
+            }
+        },
+        .unspec => p.dir = self.dir,
+    }
+    p.dev = .exact;
+    switch (context) {
+        .switch_activated => {
+            if (!self.timeout) {
+                const dt = sample_time.diff(self.segment_start).to_us();
+                if (self.avg_segment_duration == 0) {
+                    self.avg_segment_duration = dt;
+                } else {
+                    self.avg_segment_duration = (self.avg_segment_duration + dt) / 2;
+                }
+            }
+            self.timeout = false;
+        },
+        .timeout => {
+            self.timeout = true;
+        },
+    }
+    self.segment_start = sample_time;
+    self.dir_change = false;
+    // std.log.info("dc:change_to_active2, coord={d},min={d},max={d}", .{ p.coord, self.min_coord.*, self.max_coord.* });
+    if (p.coord == self.target_coord) {
+        // stop the drive
+        try self.drive.set(.off);
+        self.state = .stoped;
+    } else if (p.coord == self.min_coord.* or p.coord == self.max_coord.*) {
+        try self.drive.set(.off);
+        self.state = .limited;
+    }
+}
 
 pub fn sample(self: *Self, sample_time: dtime.Absolute) !void {
     const min_ev = try self.min_bt.sample(sample_time);
@@ -62,55 +143,7 @@ pub fn sample(self: *Self, sample_time: dtime.Absolute) !void {
         .changed_to_active => {
             // std.log.info("dc:change_to_active1, coord={d},min={d},max={d}", .{ p.coord, self.min_coord.*, self.max_coord.* });
             switch (self.state) {
-                .moving => {
-                    switch (p.dir) {
-                        // last position was in forward direction
-                        .forward => {
-                            switch (self.dir) {
-                                .forward => if (!(self.dir_change and sample_time.diff(self.segment_start).less_than(self.minimal_driving_time))) {
-                                    p.coord += 1;
-                                },
-                                .backward => {
-                                    p.dir = .backward;
-                                    switch (p.dev) {
-                                        .exact => p.coord -= 1,
-                                        .between => {},
-                                    }
-                                },
-                                .unspec => {},
-                            }
-                        },
-                        // last position was in backward direction
-                        .backward => {
-                            switch (self.dir) {
-                                .forward => {
-                                    p.dir = .forward;
-                                    switch (p.dev) {
-                                        .exact => p.coord += 1,
-                                        .between => {},
-                                    }
-                                },
-                                .backward => if (!(self.dir_change and sample_time.diff(self.segment_start).less_than(self.minimal_driving_time))) {
-                                    p.coord -= 1;
-                                },
-                                .unspec => {},
-                            }
-                        },
-                        .unspec => p.dir = self.dir,
-                    }
-                    p.dev = .exact;
-                    self.segment_start = sample_time;
-                    self.dir_change = false;
-                    // std.log.info("dc:change_to_active2, coord={d},min={d},max={d}", .{ p.coord, self.min_coord.*, self.max_coord.* });
-                    if (p.coord == self.target_coord) {
-                        // stop the drive
-                        try self.drive.set(.off);
-                        self.state = .stoped;
-                    } else if (p.coord == self.min_coord.* or p.coord == self.max_coord.*) {
-                        try self.drive.set(.off);
-                        self.state = .limited;
-                    }
-                },
+                .moving => try self.is_moving(sample_time, .switch_activated),
                 // a backslide of the trolley activates the switch again
                 .stoped, .paused => p.dev = .exact,
                 .limited, .time_exceeded => {},
@@ -129,8 +162,11 @@ pub fn sample(self: *Self, sample_time: dtime.Absolute) !void {
         },
         .unchanged => switch (self.state) {
             .moving => {
+                const dt = sample_time.diff(self.segment_start);
                 const max_t = dtime.Duration.from_ms(@as(u64, self.max_segment_duration_ds.*) *| 100);
-                if (!sample_time.diff(self.segment_start).less_than(max_t)) {
+                // const max_t = self.avg_segment_duration + self.avg_segment_duration / 20; // 5% more as average
+                if (max_t.to_us() != 0 and !dt.less_than(max_t)) {
+                    // try self.is_moving(sample_time,.timeout);
                     try self.drive.set(.off);
                     self.state = .time_exceeded;
                 }
@@ -243,6 +279,8 @@ pub fn setOrigin(self: *Self) void {
         else => {},
     }
 }
+
+// pub fn calibrate(self: *Self) void {}
 
 pub fn begin(self: *Self) !void {
     // if we use the device in simulation mode both are active!

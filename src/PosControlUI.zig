@@ -10,9 +10,9 @@ const uib = @import("ui_buttons.zig");
 const Self = @This();
 
 const ClickBt = ClickButton(PosControl);
-const IntI8 = RoRefIntValue(i8, 3, 10);
+const IntI8 = RoRefIntValue(i8, 2, 16);
 const IntU16 = RoRefIntValue(u16, 3, 10);
-const State = EnumRefValue(PosControl.State, [_][]const u8{ "fin", "pmv", "pck", "pcl", "mov", "cok", "col" });
+const State = EnumRefValue(PosControl.State, [_][]const u8{ "fin", "pmv", "pck", "pcl", "mov", "amv", "cok", "col" });
 
 startBt: ClickBt,
 pauseBt: ClickBt,
@@ -20,6 +20,7 @@ resetBt: ClickBt,
 pos_x: IntI8,
 pos_y: IntI8,
 steps: IntU16,
+remaining_time: IntU16,
 state: State,
 timer: IntU16,
 
@@ -31,6 +32,7 @@ pub fn create(pc: *PosControl, dx: *DriveControl, dy: *DriveControl) Self {
         .pos_x = .{ .ref = &dx.pos.coord },
         .pos_y = .{ .ref = &dy.pos.coord },
         .steps = .{ .ref = &pc.steps },
+        .remaining_time = .{ .ref = &pc.remaining_time_m },
         .state = .{ .ref = &pc.state },
         .timer = .{ .ref = &pc.timer_s },
     };
@@ -40,11 +42,13 @@ pub fn ui(self: *Self) []const Item {
     return &.{
         .{ .value = self.state.value() }, // 3
         .{ .value = self.steps.value() }, // 3
+        .{ .label = "m" },
+        .{ .value = self.remaining_time.value() }, // 3
         .{ .label = "x" }, // 1
-        .{ .value = self.pos_x.value() }, // 3
+        .{ .value = self.pos_x.value() }, // 2
         .{ .label = "y" }, // 1
-        .{ .value = self.pos_y.value() }, // 3
-        .{ .label = "\n" },
+        .{ .value = self.pos_y.value() }, // 2
+        // .{ .label = "\n" },
         .{ .value = self.timer.value() }, // 3
         .{ .label = " >" }, // 2
         .{ .value = self.startBt.value(.{ .db = uib.button2 }) }, // 3
