@@ -219,8 +219,6 @@ pub fn start(self: *Self) !void {
                 self.y_dir = .forward;
                 self.y = wa.y.min.*;
             }
-            if (!dx.origin_ok) try dx.goToOrigin();
-            if (!dy.origin_ok) try dy.goToOrigin();
             try dx.goto(self.x);
             try dy.goto(self.y);
             self.state = .moving;
