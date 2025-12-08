@@ -1,4 +1,5 @@
 const DriveControl = @import("DriveControl.zig");
+const DriveControlGotoTest = @import("DriveControlGotoTest.zig");
 const values = @import("tui/values.zig");
 const ClickButton = values.ClickButton;
 const RoRefIntValue = values.RoRefIntValue;
@@ -8,15 +9,14 @@ const uib = @import("ui_buttons.zig");
 
 const Self = @This();
 
-const ClickBt = ClickButton(DriveControl);
+const ClickBt = ClickButton(DriveControlGotoTest);
 const Int = RoRefIntValue(i8, 3, 10);
 const State = EnumRefValue(DriveControl.State, [_][]const u8{ "s", "l", "e", "m", "p", "o" });
 const Dir = EnumRefValue(DriveControl.Direction, [_][]const u8{ "u", "f", "b" });
 const Dev = EnumRefValue(DriveControl.Deviation, [_][]const u8{ "x", "o" });
 
 stopBt: ClickBt,
-fwBt: ClickBt,
-bwBt: ClickBt,
+startBt: ClickBt,
 origBt: ClickBt,
 
 pos_coord: Int,
@@ -26,25 +26,20 @@ target_coord: Int,
 state: State,
 dir: Dir,
 
-pub fn create(dc: *DriveControl) Self {
+pub fn create(dcgt: *DriveControlGotoTest, dc: *DriveControl) Self {
     return .{
-        .fwBt = .{
-            .ref = dc,
-            .enabled = stepForwardEnabled,
-            .clicked = stepForwardClicked,
-        },
-        .bwBt = .{
-            .ref = dc,
-            .enabled = stepBackwardEnabled,
-            .clicked = stepBackwardClicked,
+        .startBt = .{
+            .ref = dcgt,
+            .enabled = startEnabled,
+            .clicked = startClicked,
         },
         .stopBt = .{
-            .ref = dc,
+            .ref = dcgt,
             .enabled = stopEnabled,
             .clicked = stopClicked,
         },
         .origBt = .{
-            .ref = dc,
+            .ref = dcgt,
             .enabled = origEnabled,
             .clicked = origClicked,
         },
@@ -69,58 +64,50 @@ pub fn ui(self: *Self) []const Item {
         .{ .value = self.target_coord.value() }, // 3
         .{ .label = "\n" },
         .{ .label = "#" },
-        .{ .value = self.stopBt.value(.{ .db = uib.button1 }) },
-        .{ .label = "-" },
-        .{ .value = self.bwBt.value(.{ .db = uib.button2 }) },
-        .{ .label = "+" },
-        .{ .value = self.fwBt.value(.{ .db = uib.button3 }) },
+        .{ .value = self.stopBt.value(.{ .db = uib.button2 }) },
+        .{ .label = "<" },
+        .{ .value = self.startBt.value(.{ .db = uib.button3 }) },
         .{ .label = "o" },
         .{ .value = self.origBt.value(.{ .db = uib.button4 }) },
     };
 }
 
-fn stepForwardEnabled(dc: *DriveControl) bool {
-    return switch (dc.state) {
+fn startEnabled(dcgt: *DriveControlGotoTest) bool {
+    return switch (dcgt.dc.state) {
         .stoped => true,
-        .limited => (dc.pos.dir == .backward),
         else => false,
     };
 }
 
-fn stepForwardClicked(dc: *DriveControl) void {
-    dc.stepForward() catch {};
-}
-
-fn stepBackwardEnabled(dc: *DriveControl) bool {
-    return switch (dc.state) {
-        .stoped => true,
-        .limited => (dc.pos.dir == .forward),
-        else => false,
+fn startClicked(dcgt: *DriveControlGotoTest) void {
+    dcgt.dc.goto(switch (dcgt.next_pos) {
+        .min => dcgt.range.min.*,
+        .max => dcgt.range.max.*,
+    }) catch {};
+    dcgt.next_pos = switch (dcgt.next_pos) {
+        .min => .max,
+        .max => .min,
     };
 }
 
-fn stepBackwardClicked(dc: *DriveControl) void {
-    dc.stepBackward() catch {};
-}
-
-fn stopEnabled(dc: *DriveControl) bool {
-    return switch (dc.state) {
+fn stopEnabled(dcgt: *DriveControlGotoTest) bool {
+    return switch (dcgt.dc.state) {
         .moving, .go_to_origin => true,
         else => false,
     };
 }
 
-fn stopClicked(dc: *DriveControl) void {
-    dc.stop() catch {};
+fn stopClicked(dcgt: *DriveControlGotoTest) void {
+    dcgt.dc.stop() catch {};
 }
 
-fn origEnabled(dc: *DriveControl) bool {
-    return switch (dc.state) {
+fn origEnabled(dcgt: *DriveControlGotoTest) bool {
+    return switch (dcgt.dc.state) {
         .stoped, .paused, .limited, .time_exceeded => true,
         else => false,
     };
 }
 
-fn origClicked(dc: *DriveControl) void {
-    dc.goToOrigin() catch {};
+fn origClicked(dcgt: *DriveControlGotoTest) void {
+    dcgt.dc.goToOrigin() catch {};
 }

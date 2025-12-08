@@ -8,11 +8,13 @@ const Drive = @import("Drive.zig");
 const Relais = @import("Relais.zig");
 const Buttons = @import("tui/Buttons.zig");
 const DriveControlUI = @import("DriveControlUI.zig");
+const DriveControlGotoTestUI = @import("DriveControlGotoTestUI.zig");
 const PosControlUI = @import("PosControlUI.zig");
 const Tree = @import("tui/Tree.zig");
 const TUI = @import("TUI.zig");
 const IO = @import("IO.zig");
 const areaUI = @import("areaUI.zig");
+const rangeUI = @import("rangeUI.zig");
 const Item = Tree.Item;
 const values = @import("tui/values.zig");
 const uib = @import("ui_buttons.zig");
@@ -89,7 +91,7 @@ var back_light = IntValue(*u8, u8, 4, 10){ .range = .{ .min = 0, .max = 255 }, .
 var cooking_time = IntValue(*u8, u8, 4, 10){ .range = .{ .min = 0, .max = 255 }, .val = &Config.values.cooking_time_dm };
 var cooling_time = IntValue(*u8, u8, 4, 10){ .range = .{ .min = 0, .max = 255 }, .val = &Config.values.cooling_time_dm };
 var after_move_time = IntValue(*u8, u8, 4, 10){ .range = .{ .min = 0, .max = 255 }, .val = &Config.values.after_move_time_ds };
-
+var skip_cooking = RefPushButton(bool){ .ref = &IO.skip_cooking, .pressed = true, .released = false };
 const AreaUIV = areaUI.AreaUI(*i8, i8, 3);
 var allowed_area = aablk: {
     const a = &Config.values.allowed_area;
@@ -120,6 +122,23 @@ var work_area = wablk: {
         .{ .min = &zero, .max = &aa.y.max },
     );
 };
+const RangeUI = rangeUI.RangeUI(*i8, i8, 3);
+var x_goto_test = xgblk: {
+    const r = &Config.values.x_goto_test_range;
+    break :xgblk RangeUI.create(
+        .{ .min = &r.min, .max = &r.max },
+        .{ .min = -10, .max = 10 },
+        .{ .min = -10, .max = 10 },
+    );
+};
+var y_goto_test = ygblk: {
+    const r = &Config.values.y_goto_test_range;
+    break :ygblk RangeUI.create(
+        .{ .min = &r.min, .max = &r.max },
+        .{ .min = -5, .max = 5 },
+        .{ .min = -5, .max = 5 },
+    );
+};
 var x_max_segment_duration_ds = IntValue(*u8, u8, 4, 10){
     .range = .{ .min = 0, .max = 255 },
     .val = &Config.values.x_max_segment_duration_ds,
@@ -127,6 +146,14 @@ var x_max_segment_duration_ds = IntValue(*u8, u8, 4, 10){
 var y_max_segment_duration_ds = IntValue(*u8, u8, 4, 10){
     .range = .{ .min = 0, .max = 255 },
     .val = &Config.values.y_max_segment_duration_ds,
+};
+var x_lim_check_delay_cs = IntValue(*u8, u8, 4, 10){
+    .range = .{ .min = 0, .max = 255 },
+    .val = &Config.values.x_lim_check_delay_cs,
+};
+var y_lim_check_delay_cs = IntValue(*u8, u8, 4, 10){
+    .range = .{ .min = 0, .max = 255 },
+    .val = &Config.values.y_lim_check_delay_cs,
 };
 var timer_sampling_time_cs = IntValue(*u8, u8, 4, 10){
     .range = .{ .min = 1, .max = 255 },
@@ -218,6 +245,8 @@ var pb_relais_b = RefPushButton(Relais.State){
 
 var drive_x_ui = DriveControlUI.create(&IO.drive_x_control);
 var drive_y_ui = DriveControlUI.create(&IO.drive_y_control);
+var drive_x_goto_test_ui = DriveControlGotoTestUI.create(&IO.drive_x_goto_test, &IO.drive_x_control);
+var drive_y_goto_test_ui = DriveControlGotoTestUI.create(&IO.drive_y_goto_test, &IO.drive_y_control);
 var pos_ui = PosControlUI.create(&IO.pos_control, &IO.drive_x_control, &IO.drive_y_control);
 
 const items: []const Item = &.{
@@ -243,6 +272,14 @@ const items: []const Item = &.{
                 .{ .label = "cool tm dm:" },
                 .{ .value = cooling_time.value() },
                 .{ .label = "\n" },
+                .{ .popup = .{
+                    .str = " x goto test\n",
+                    .items = x_goto_test.ui(),
+                } },
+                .{ .popup = .{
+                    .str = " y goto test\n",
+                    .items = y_goto_test.ui(),
+                } },
                 .{ .label = "after mv ds:" },
                 .{ .value = after_move_time.value() },
                 .{ .label = "x maxseg ds:" },
@@ -251,6 +288,10 @@ const items: []const Item = &.{
                 .{ .label = "y maxseg ds:" },
                 .{ .value = y_max_segment_duration_ds.value() },
                 // .{ .label = "\n" },
+                .{ .label = "x limckd cs:" },
+                .{ .value = x_lim_check_delay_cs.value() },
+                .{ .label = "y limckd cs:" },
+                .{ .value = y_lim_check_delay_cs.value() },
                 .{ .label = "smpl tm cs:" },
                 .{ .value = timer_sampling_time_cs.value() },
                 .{ .label = "\n" },
@@ -272,20 +313,33 @@ const items: []const Item = &.{
             },
         },
     },
-    .{ .popup = .{
-        .str = " pos control\n",
-        .items = pos_ui.ui(),
-    } },
-    .{ .popup = .{ .str = " drive control\n", .items = &.{
+    .{ .popup = .{ .str = " main\n", .items = &.{
         .{ .popup = .{
-            .str = " drive X\n",
-            .items = drive_x_ui.ui(),
+            .str = " pos control\n",
+            .items = pos_ui.ui(),
         } },
-        .{ .popup = .{
-            .str = " drive Y\n",
-            .items = drive_y_ui.ui(),
-        } },
+        .{ .label = "skip cook:" },
+        .{ .value = skip_cooking.value(.{ .behaviour = .toggle_button }) },
     } } },
+    .{
+        .popup = .{
+            .str = " drive control\n",
+            .items = &.{
+                .{ .popup = .{
+                    .str = " drive X\n",
+                    .items = drive_x_ui.ui(),
+                } },
+                .{ .popup = .{
+                    .str = " drive Y\n",
+                    .items = drive_y_ui.ui(),
+                } },
+                .{ .popup = .{
+                    .str = "test x\n",
+                    .items = drive_x_goto_test_ui.ui(),
+                } },
+            },
+        },
+    },
     .{
         .popup = .{
             .str = " sim,cook enbl\n",

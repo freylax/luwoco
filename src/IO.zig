@@ -8,6 +8,7 @@ const Drive = @import("Drive.zig");
 const Relais = @import("Relais.zig");
 const SampleButton = @import("SampleButton.zig");
 const DriveControl = @import("DriveControl.zig");
+const DriveControlGotoTest = @import("DriveControlGotoTest.zig");
 const MotionSimulator = @import("MotionSimulator.zig");
 const PosControl = @import("PosControl.zig");
 const rp2xxx = microzig.hal;
@@ -67,6 +68,7 @@ const baud_rate = 115200;
 pub const i2c0 = rp2xxx.i2c.instance.num(0);
 pub var lcd_reset = iod.lcd_reset.digital_io();
 // not io related, but let live here for now.
+pub var skip_cooking: bool = false;
 pub var use_simulator: bool = false;
 pub var use_delaying: bool = false;
 pub var cook_enable_sim: IOState = .high;
@@ -164,6 +166,7 @@ pub var drive_x_control = DriveControl{
     .min_coord = &Config.values.allowed_area.x.min,
     .max_coord = &Config.values.allowed_area.x.max,
     .max_segment_duration_ds = &Config.values.x_max_segment_duration_ds,
+    .lim_check_delay_cs = &Config.values.x_lim_check_delay_cs,
 };
 pub var drive_y_control = DriveControl{
     .drive = &drive_y,
@@ -173,8 +176,16 @@ pub var drive_y_control = DriveControl{
     .min_coord = &Config.values.allowed_area.y.min,
     .max_coord = &Config.values.allowed_area.y.max,
     .max_segment_duration_ds = &Config.values.y_max_segment_duration_ds,
+    .lim_check_delay_cs = &Config.values.y_lim_check_delay_cs,
 };
-
+pub var drive_x_goto_test = DriveControlGotoTest{ .dc = &drive_x_control, .range = xgtblk: {
+    const r = &Config.values.x_goto_test_range;
+    break :xgtblk .{ .min = &r.min, .max = &r.max };
+} };
+pub var drive_y_goto_test = DriveControlGotoTest{ .dc = &drive_y_control, .range = ygtblk: {
+    const r = &Config.values.y_goto_test_range;
+    break :ygtblk .{ .min = &r.min, .max = &r.max };
+} };
 pub var pos_control = PosControl{
     .drive_x_control = &drive_x_control,
     .drive_y_control = &drive_y_control,
@@ -190,6 +201,7 @@ pub var pos_control = PosControl{
             .y = .{ .min = &wa.y.min, .max = &wa.y.max },
         };
     },
+    .skip_cooking = &skip_cooking,
 };
 
 pub fn init() !void {

@@ -30,10 +30,7 @@ cooking_time_dm: *u8, // cooking time in deci minutes
 cooling_time_dm: *u8, // cooling time in deci minutes
 after_move_time_ds: *u8,
 work_area: Area,
-// current_sensor_enable: *bool,
-// current_sensor_value: *?u8,
-// current_sensor_threshold: *u8,
-
+skip_cooking: *bool,
 x_dir: Dir = .forward,
 y_dir: Dir = .forward,
 axis: Axis = .xy,
@@ -77,7 +74,42 @@ fn start_cooling(self: *Self, sample_time: time.Absolute) !void {
     self.state = .cooling;
     self.set_timer(sample_time, @as(u64, self.cooling_time_dm.*) *| 6_000_000);
 }
-
+fn next_step(self: *Self) !void {
+    const dx = self.drive_x_control;
+    const dy = self.drive_y_control;
+    if (self.steps == 1) {
+        self.state = .finished;
+    } else {
+        self.steps -= 1;
+        self.update_remainig_time();
+        switch (self.axis) {
+            .x => {
+                self.x += switch (self.x_dir) {
+                    .forward => 1,
+                    .backward => -1,
+                };
+                try dx.goto(self.x);
+                self.state = .moving;
+            },
+            .y => {
+                self.y += switch (self.y_dir) {
+                    .forward => 1,
+                    .backward => -1,
+                };
+                try dy.goto(self.y);
+                self.state = .moving;
+            },
+            .xy => {},
+        }
+    }
+}
+fn move_done(self: *Self, sample_time: time.Absolute) !void {
+    if (self.skip_cooking.*) {
+        try self.next_step();
+    } else {
+        try self.start_after_move(sample_time);
+    }
+}
 pub fn sample(self: *Self, sample_time: time.Absolute) !void {
     const dx = self.drive_x_control;
     const dy = self.drive_y_control;
@@ -98,7 +130,7 @@ pub fn sample(self: *Self, sample_time: time.Absolute) !void {
                 // initial pos
                 .xy => if (dx.state == .stoped and dy.state == .stoped) {
                     self.axis = .x;
-                    try self.start_after_move(sample_time);
+                    try self.move_done(sample_time);
                 },
                 .x => if (dx.state == .stoped) {
                     switch (self.x_dir) {
@@ -111,11 +143,11 @@ pub fn sample(self: *Self, sample_time: time.Absolute) !void {
                             self.x_dir = .forward;
                         },
                     }
-                    try self.start_after_move(sample_time);
+                    try self.move_done(sample_time);
                 },
                 .y => if (dy.state == .stoped) {
                     self.axis = .x;
-                    try self.start_after_move(sample_time);
+                    try self.move_done(sample_time);
                 },
             }
         },
@@ -153,32 +185,7 @@ pub fn sample(self: *Self, sample_time: time.Absolute) !void {
         .cooling => {
             self.update_timer(sample_time);
             if (self.timer_us > 0) return;
-
-            if (self.steps == 1) {
-                self.state = .finished;
-            } else {
-                self.steps -= 1;
-                self.update_remainig_time();
-                switch (self.axis) {
-                    .x => {
-                        self.x += switch (self.x_dir) {
-                            .forward => 1,
-                            .backward => -1,
-                        };
-                        try dx.goto(self.x);
-                        self.state = .moving;
-                    },
-                    .y => {
-                        self.y += switch (self.y_dir) {
-                            .forward => 1,
-                            .backward => -1,
-                        };
-                        try dy.goto(self.y);
-                        self.state = .moving;
-                    },
-                    .xy => {},
-                }
-            }
+            try self.next_step();
         },
         .paused_cooking => {},
         else => {},
@@ -212,6 +219,8 @@ pub fn start(self: *Self) !void {
                 self.y_dir = .forward;
                 self.y = wa.y.min.*;
             }
+            if (!dx.origin_ok) try dx.goToOrigin();
+            if (!dy.origin_ok) try dy.goToOrigin();
             try dx.goto(self.x);
             try dy.goto(self.y);
             self.state = .moving;
