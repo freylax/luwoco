@@ -106,15 +106,34 @@ pub fn sample(self: *Self, sample_time: dtime.Absolute) !void {
     const ori_ev = try self.ori_bt.sample(sample_time);
     const lim_ev = try self.lim_bt.sample(sample_time);
     const pos_ev = try self.pos_bt.sample(sample_time);
+    const p = &self.pos;
     switch (lim_ev) {
         .changed_to_active => {
             switch (self.pos_bt.is_active) {
                 true => {
                     // origin position reached
-                    if (self.state == .go_to_origin) {
-                        try self.drive.set(.off);
-                        try self.setOrigin();
-                        return;
+                    switch (self.state) {
+                        .go_to_origin => {
+                            try self.drive.set(.off);
+                            try self.setOrigin();
+                            return;
+                        },
+                        .stoped, .paused => {
+                            p.coord = 0;
+                            p.dev = .exact;
+                            self.origin_ok = true;
+                        },
+                        .moving => {
+                            p.coord = 0;
+                            p.dev = .exact;
+                            self.origin_ok = true;
+                            if ((p.dir == .forward and p.coord >= self.target_coord) or (p.dir == .backward and p.coord <= self.target_coord)) {
+                                // stop the drive
+                                try self.drive.set(.off);
+                                self.state = .stoped;
+                            }
+                        },
+                        else => {},
                     }
                 },
                 false => {
@@ -145,7 +164,6 @@ pub fn sample(self: *Self, sample_time: dtime.Absolute) !void {
         },
         .unchanged => {},
     }
-    const p = &self.pos;
     switch (pos_ev) {
         .changed_to_active => {
             switch (self.state) {

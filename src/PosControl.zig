@@ -9,7 +9,7 @@ const Area = @import("area.zig").Area(*const i8);
 const Self = @This();
 
 const Dir = enum { forward, backward };
-const Axis = enum { x, y, xy };
+const Axis = enum { x, _y, y, _x };
 
 pub const State = enum {
     finished,
@@ -33,7 +33,7 @@ work_area: Area,
 skip_cooking: *bool,
 x_dir: Dir = .forward,
 y_dir: Dir = .forward,
-axis: Axis = .xy,
+axis: Axis = .y,
 x: i8 = 0,
 y: i8 = 0,
 steps: u16 = 0,
@@ -99,7 +99,7 @@ fn next_step(self: *Self) !void {
                 try dy.goto(self.y);
                 self.state = .moving;
             },
-            .xy => {},
+            ._x, ._y => {},
         }
     }
 }
@@ -110,10 +110,23 @@ fn move_done(self: *Self, sample_time: time.Absolute) !void {
         try self.start_after_move(sample_time);
     }
 }
+fn check_for_x_end(self: *Self) void {
+    const dx = self.drive_x_control;
+    const wa = &self.work_area;
+    switch (self.x_dir) {
+        .forward => if (dx.pos.coord >= wa.x.max.*) {
+            self.x_dir = .backward;
+            self.axis = .y;
+        },
+        .backward => if (dx.pos.coord <= wa.x.min.*) {
+            self.x_dir = .forward;
+            self.axis = .y;
+        },
+    }
+}
 pub fn sample(self: *Self, sample_time: time.Absolute) !void {
     const dx = self.drive_x_control;
     const dy = self.drive_y_control;
-    const wa = &self.work_area;
     switch (self.state) {
         .moving, .after_move, .paused_moving, .finished => {
             // prevent sampling of false signals if MW is active
@@ -128,25 +141,31 @@ pub fn sample(self: *Self, sample_time: time.Absolute) !void {
         .moving => {
             switch (self.axis) {
                 // initial pos
-                .xy => if (dx.state == .stoped and dy.state == .stoped) {
+                .y => if (dy.state == .stoped) {
+                    if (dx.pos.coord != self.x) {
+                        self.axis = ._x;
+                        try dx.goto(self.x);
+                    } else {
+                        self.axis = .x;
+                        try self.move_done(sample_time);
+                    }
+                },
+                ._x => if (dx.state == .stoped) {
                     self.axis = .x;
                     try self.move_done(sample_time);
                 },
                 .x => if (dx.state == .stoped) {
-                    switch (self.x_dir) {
-                        .forward => if (dx.pos.coord == wa.x.max.*) {
-                            self.axis = .y;
-                            self.x_dir = .backward;
-                        },
-                        .backward => if (dx.pos.coord == wa.x.min.*) {
-                            self.axis = .y;
-                            self.x_dir = .forward;
-                        },
+                    if (dy.pos.coord != self.y) {
+                        self.axis = ._y;
+                        try dy.goto(self.y);
+                    } else {
+                        self.check_for_x_end();
+                        try self.move_done(sample_time);
                     }
-                    try self.move_done(sample_time);
                 },
-                .y => if (dy.state == .stoped) {
+                ._y => if (dy.state == .stoped) {
                     self.axis = .x;
+                    self.check_for_x_end();
                     try self.move_done(sample_time);
                 },
             }
@@ -219,10 +238,9 @@ pub fn start(self: *Self) !void {
                 self.y_dir = .forward;
                 self.y = wa.y.min.*;
             }
-            try dx.goto(self.x);
             try dy.goto(self.y);
             self.state = .moving;
-            self.axis = .xy;
+            self.axis = .y;
         },
         .paused_moving => {
             try dx.@"continue"();

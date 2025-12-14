@@ -318,7 +318,7 @@ const items: []const Item = &.{
             .str = " pos control\n",
             .items = pos_ui.ui(),
         } },
-        .{ .label = "skip cook:" },
+        .{ .label = "skip cook: " },
         .{ .value = skip_cooking.value(.{ .behaviour = .toggle_button }) },
     } } },
     .{
@@ -334,8 +334,12 @@ const items: []const Item = &.{
                     .items = drive_y_ui.ui(),
                 } },
                 .{ .popup = .{
-                    .str = "test x\n",
+                    .str = " X goto test\n",
                     .items = drive_x_goto_test_ui.ui(),
+                } },
+                .{ .popup = .{
+                    .str = " Y goto test\n",
+                    .items = drive_y_goto_test_ui.ui(),
                 } },
             },
         },
