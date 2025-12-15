@@ -59,12 +59,12 @@ pub fn create(dc: *DriveControl) Self {
 
 pub fn ui(self: *Self) []const Item {
     return &.{
-        .{ .value = self.state.value() }, // 1
-        .{ .value = self.dir.value() }, // 1
+        .{ .value = self.state.value(.ro) }, // 1
+        .{ .value = self.dir.value(.ro) }, // 1
         // .{ .label = "  " },
         .{ .value = self.pos_coord.value() }, // 3
-        .{ .value = self.pos_dir.value() }, // 1
-        .{ .value = self.pos_dev.value() }, // 1
+        .{ .value = self.pos_dir.value(.ro) }, // 1
+        .{ .value = self.pos_dev.value(.ro) }, // 1
         .{ .label = " =>" }, // 3
         .{ .value = self.target_coord.value() }, // 3
         .{ .label = "\n" },

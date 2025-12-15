@@ -11,6 +11,7 @@ const DriveControl = @import("DriveControl.zig");
 const DriveControlGotoTest = @import("DriveControlGotoTest.zig");
 const MotionSimulator = @import("MotionSimulator.zig");
 const PosControl = @import("PosControl.zig");
+const CookTime = @import("CookTime.zig");
 const rp2xxx = microzig.hal;
 const gpio = rp2xxx.gpio;
 const time = rp2xxx.time;

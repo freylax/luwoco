@@ -10,6 +10,8 @@ const Buttons = @import("tui/Buttons.zig");
 const DriveControlUI = @import("DriveControlUI.zig");
 const DriveControlGotoTestUI = @import("DriveControlGotoTestUI.zig");
 const PosControlUI = @import("PosControlUI.zig");
+const CookTime = @import("CookTime.zig");
+const CookTimeUI = @import("CookTimeUI.zig");
 const Tree = @import("tui/Tree.zig");
 const TUI = @import("TUI.zig");
 const IO = @import("IO.zig");
@@ -56,6 +58,7 @@ const EventId = enum(u16) {
     drive_y,
     relais_a,
     relais_b,
+    cook_time,
     pub fn id(self: EventId) u16 {
         return @intFromEnum(self);
     }
@@ -88,8 +91,6 @@ const button_masks = blk: {
 
 var back_light = IntValue(*u8, u8, 4, 10){ .range = .{ .min = 0, .max = 255 }, .val = &Config.values.back_light, .id = EventId.back_light.id() };
 
-var cooking_time = IntValue(*u8, u8, 4, 10){ .range = .{ .min = 0, .max = 255 }, .val = &Config.values.cooking_time_dm };
-var cooling_time = IntValue(*u8, u8, 4, 10){ .range = .{ .min = 0, .max = 255 }, .val = &Config.values.cooling_time_dm };
 var after_move_time = IntValue(*u8, u8, 4, 10){ .range = .{ .min = 0, .max = 255 }, .val = &Config.values.after_move_time_ds };
 var skip_cooking = RefPushButton(bool){ .ref = &IO.skip_cooking, .pressed = true, .released = false };
 const AreaUIV = areaUI.AreaUI(*i8, i8, 3);
@@ -201,7 +202,14 @@ var pb_save_config = ClickButton(Config){
     .enabled = Config.data_differ,
     .clicked = Config.write,
 };
-
+var cook_time_ui = CookTimeUI.create(
+    &Config.values.use_depth_time_mapping,
+    &Config.values.humidity,
+    &Config.values.penetration_depth_cm,
+    &Config.values.cooking_time_dm,
+    &Config.values.cooling_time_dm,
+    EventId.cook_time.id(),
+);
 var drive_x_state: Drive.State = .off;
 var pb_dx_dir_a = RefPushButton(Drive.State){
     .ref = &drive_x_state,
@@ -259,26 +267,8 @@ const items: []const Item = &.{
                 .{ .value = pb_save_config.value(.{}) },
                 .{ .label = "\n" },
                 .{ .popup = .{
-                    .str = " work area\n",
-                    .items = work_area.ui(),
-                } },
-                .{ .popup = .{
                     .str = " allowed area\n",
                     .items = allowed_area.ui(),
-                } },
-                .{ .label = "cook tm dm:" },
-                .{ .value = cooking_time.value() },
-                .{ .label = "\n" },
-                .{ .label = "cool tm dm:" },
-                .{ .value = cooling_time.value() },
-                .{ .label = "\n" },
-                .{ .popup = .{
-                    .str = " x goto test\n",
-                    .items = x_goto_test.ui(),
-                } },
-                .{ .popup = .{
-                    .str = " y goto test\n",
-                    .items = y_goto_test.ui(),
                 } },
                 .{ .label = "after mv ds:" },
                 .{ .value = after_move_time.value() },
@@ -318,6 +308,17 @@ const items: []const Item = &.{
             .str = " pos control\n",
             .items = pos_ui.ui(),
         } },
+        .{ .label = "Save cfg: " },
+        .{ .value = pb_save_config.value(.{}) },
+        .{ .label = "\n" },
+        .{ .popup = .{
+            .str = " work area\n",
+            .items = work_area.ui(),
+        } },
+        .{ .popup = .{
+            .str = " cook time\n",
+            .items = cook_time_ui.ui(),
+        } },
         .{ .label = "skip cook: " },
         .{ .value = skip_cooking.value(.{ .behaviour = .toggle_button }) },
     } } },
@@ -334,12 +335,28 @@ const items: []const Item = &.{
                     .items = drive_y_ui.ui(),
                 } },
                 .{ .popup = .{
-                    .str = " X goto test\n",
-                    .items = drive_x_goto_test_ui.ui(),
-                } },
-                .{ .popup = .{
-                    .str = " Y goto test\n",
-                    .items = drive_y_goto_test_ui.ui(),
+                    .str = " goto test\n",
+                    .items = &.{
+                        .{ .popup = .{
+                            .str = " X setup\n",
+                            .items = x_goto_test.ui(),
+                        } },
+                        .{ .popup = .{
+                            .str = " X test\n",
+                            .items = drive_x_goto_test_ui.ui(),
+                        } },
+                        .{ .popup = .{
+                            .str = " Y setup\n",
+                            .items = y_goto_test.ui(),
+                        } },
+                        .{ .popup = .{
+                            .str = " Y test\n",
+                            .items = drive_y_goto_test_ui.ui(),
+                        } },
+                        .{ .label = "Save cfg: " },
+                        .{ .value = pb_save_config.value(.{}) },
+                        .{ .label = "\n" },
+                    },
                 } },
             },
         },
@@ -601,6 +618,9 @@ pub fn main() !void {
                 },
                 .relais_b => {
                     try IO.relais_b.set(relais_b_state);
+                },
+                .cook_time => {
+                    CookTime.update();
                 },
             }
         }

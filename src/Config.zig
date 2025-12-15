@@ -8,6 +8,7 @@ const flash = rp2xxx.flash;
 const FlashJournal = @import("FlashJournal.zig");
 const Range = @import("range.zig").Range;
 const Area = @import("area.zig").Area;
+const Humidity = @import("CookTime.zig").Humidity;
 const Self = @This();
 const my_size: u8 = @sizeOf(Self);
 
@@ -16,7 +17,7 @@ const pages = flash.SECTOR_SIZE / flash.PAGE_SIZE; // 4096 / 256 = 16 pages
 const flash_target_offset = 0x20_0000 - flash.SECTOR_SIZE; // 2 MB Flash
 const flash_target_contents = @as([*]const u8, @ptrFromInt(flash.XIP_BASE + flash_target_offset));
 // this has to be adjusted if more entries are populated
-const max_size: u8 = 25; // current size is 21
+const max_size: u8 = 28; // current size is 21
 
 pub var values: Self = Self{};
 
@@ -54,6 +55,12 @@ y_lim_check_delay_cs: u8 = 10,
 x_goto_test_range: Range(i8) = .{ .min = -1, .max = 1 },
 // size: 2 25
 y_goto_test_range: Range(i8) = .{ .min = -1, .max = 1 },
+// size: 1 26
+use_depth_time_mapping: bool = false,
+// size: 1 27
+humidity: Humidity = .moist,
+// size: 1 28
+penetration_depth_cm: u8 = 2,
 
 fn write_page(page_idx: usize, page: []const u8) void {
     comptime assert(max_size >= my_size);

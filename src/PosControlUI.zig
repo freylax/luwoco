@@ -40,7 +40,7 @@ pub fn create(pc: *PosControl, dx: *DriveControl, dy: *DriveControl) Self {
 
 pub fn ui(self: *Self) []const Item {
     return &.{
-        .{ .value = self.state.value() }, // 3
+        .{ .value = self.state.value(.ro) }, // 3
         .{ .value = self.steps.value() }, // 3
         .{ .label = "m" },
         .{ .value = self.remaining_time.value() }, // 3

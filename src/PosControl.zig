@@ -8,8 +8,8 @@ const Area = @import("area.zig").Area(*const i8);
 
 const Self = @This();
 
-const Dir = enum { forward, backward };
-const Axis = enum { x, _y, y, _x };
+const Dir = enum(u1) { forward, backward };
+const Axis = enum(u2) { x, _y, y, _x };
 
 pub const State = enum {
     finished,
@@ -84,7 +84,7 @@ fn next_step(self: *Self) !void {
         self.update_remainig_time();
         switch (self.axis) {
             .x => {
-                self.x += switch (self.x_dir) {
+                self.x +|= switch (self.x_dir) {
                     .forward => 1,
                     .backward => -1,
                 };
@@ -92,7 +92,7 @@ fn next_step(self: *Self) !void {
                 self.state = .moving;
             },
             .y => {
-                self.y += switch (self.y_dir) {
+                self.y +|= switch (self.y_dir) {
                     .forward => 1,
                     .backward => -1,
                 };

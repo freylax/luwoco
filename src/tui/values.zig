@@ -23,6 +23,7 @@ pub const StrValue = struct {
 
 // the enum indexes into the provided array of strings
 pub fn EnumRefValue(T: type, map: anytype) type {
+    const RW = enum { ro, rw };
     assert(@typeInfo(T) == .@"enum");
     // assert(@typeInfo(@TypeOf(map)) == .array);
     const en = @typeInfo(T).@"enum".fields;
@@ -38,18 +39,45 @@ pub fn EnumRefValue(T: type, map: anytype) type {
     return struct {
         const Self = @This();
         ref: *T,
+        id: ?u16 = null,
 
-        pub fn value(self: *Self) Value {
-            return .{ .ro = .{
-                .size = max,
-                .ptr = self,
-                .vtable = &.{ .get = get },
-            } };
+        pub fn value(self: *Self, rw: RW) Value {
+            return switch (rw) {
+                .ro => .{ .ro = .{
+                    .size = max,
+                    .ptr = self,
+                    .vtable = &.{ .get = get },
+                } },
+                .rw => .{ .rw = .{
+                    .size = max,
+                    .ptr = self,
+                    .vtable = &.{ .get = get, .inc = inc, .dec = dec },
+                } },
+            };
         }
 
         fn get(ctx: *anyopaque) []const u8 {
             const self: *Self = @ptrCast(@alignCast(ctx));
             return map[@intFromEnum(self.ref.*)];
+        }
+        fn event(self: *Self) ?Event {
+            if (self.id) |id| {
+                return .{ .id = id, .pl = .value };
+            } else {
+                return null;
+            }
+        }
+        fn inc(ctx: *anyopaque) ?Event {
+            const self: *Self = @ptrCast(@alignCast(ctx));
+            const i = @intFromEnum(self.ref.*);
+            self.ref.* = @enumFromInt(if (i == en.len - 1) 0 else i + 1);
+            return self.event();
+        }
+        fn dec(ctx: *anyopaque) ?Event {
+            const self: *Self = @ptrCast(@alignCast(ctx));
+            const i = @intFromEnum(self.ref.*);
+            self.ref.* = @enumFromInt(if (i == 0) en.len - 1 else i - 1);
+            return self.event();
         }
     };
 }
