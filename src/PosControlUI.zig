@@ -11,15 +11,16 @@ const Self = @This();
 
 const ClickBt = ClickButton(PosControl);
 const IntI8 = RoRefIntValue(i8, 2, 16);
+const IntU8 = RoRefIntValue(u8, 3, 10);
 const IntU16 = RoRefIntValue(u16, 3, 10);
-const State = EnumRefValue(PosControl.State, [_][]const u8{ "fin", "pmv", "pck", "pcl", "mov", "amv", "cok", "col" });
+const State = EnumRefValue(PosControl.State, [_][]const u8{ "fin", "pmv", "pck", "pcl", "mov", "amv", "cok", "col", "res" });
 
 startBt: ClickBt,
 pauseBt: ClickBt,
 resetBt: ClickBt,
 pos_x: IntI8,
 pos_y: IntI8,
-steps: IntU16,
+steps: IntU8,
 remaining_time: IntU16,
 state: State,
 timer: IntU16,

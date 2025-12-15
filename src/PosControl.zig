@@ -11,7 +11,7 @@ const Self = @This();
 const Dir = enum(u1) { forward, backward };
 const Axis = enum(u2) { x, _y, y, _x };
 
-pub const State = enum {
+pub const State = enum(u4) {
     finished,
     paused_moving,
     paused_cooking,
@@ -20,6 +20,17 @@ pub const State = enum {
     after_move,
     cooking,
     cooling,
+    restored_state,
+};
+
+pub const SavedState = packed struct(u32) {
+    x_dir: Dir, // 1
+    y_dir: Dir, // 1
+    axis: Axis, // 2
+    fill: u4 = 0, // 4
+    x: i8, // 8
+    y: i8, // 8
+    steps: u8, // 8
 };
 
 drive_x_control: *DriveControl,
@@ -36,13 +47,15 @@ y_dir: Dir = .forward,
 axis: Axis = .y,
 x: i8 = 0,
 y: i8 = 0,
-steps: u16 = 0,
+steps: u8 = 0,
 remaining_time_m: u16 = 0,
 timer_us: u64 = 0,
 timer_s: u16 = 0,
 timer_update_us: u64 = 0,
 
 state: State = .finished,
+
+saved_state: *u32,
 
 fn set_timer(self: *Self, sample_time: time.Absolute, duration_us: u64) void {
     self.timer_us = duration_us;
@@ -136,6 +149,7 @@ pub fn sample(self: *Self, sample_time: time.Absolute) !void {
         .cooking, .cooling, .paused_cooking, .paused_cooling => {
             _ = try self.cook_enable.sample(sample_time);
         },
+        .restored_state => {},
     }
     switch (self.state) {
         .moving => {
@@ -210,9 +224,9 @@ pub fn sample(self: *Self, sample_time: time.Absolute) !void {
         else => {},
     }
 }
-fn number_of_steps(self: *Self) u16 {
+fn number_of_steps(self: *Self) u8 {
     const wa = &self.work_area;
-    return @intCast((wa.x.max.* - wa.x.min.* + 1) * (wa.y.max.* - wa.y.min.* + 1));
+    return @intCast((wa.x.max.* -| wa.x.min.* +| 1) *| (wa.y.max.* -| wa.y.min.* +| 1));
 }
 
 pub fn start(self: *Self) !void {
@@ -242,6 +256,12 @@ pub fn start(self: *Self) !void {
             self.state = .moving;
             self.axis = .y;
         },
+        .restored_state => {
+            self.update_remainig_time();
+            try dy.goto(self.y);
+            self.state = .moving;
+            self.axis = .y;
+        },
         .paused_moving => {
             try dx.@"continue"();
             try dy.@"continue"();
@@ -265,8 +285,8 @@ pub fn start(self: *Self) !void {
 fn update_remainig_time(self: *Self) void {
     const steps = if (self.steps != 0) self.steps else self.number_of_steps();
     self.remaining_time_m = (@as(u16, self.cooking_time_dm.*) +|
-        @as(u16, self.cooling_time_dm.*)) *| steps / 10 +|
-        @as(u16, @intCast(@as(u32, self.after_move_time_ds.*) *| steps / 600));
+        @as(u16, self.cooling_time_dm.*)) *| @as(u16, steps) / 10 +|
+        @as(u16, @intCast(@as(u32, self.after_move_time_ds.*) *| @as(u32, steps) / 600));
 }
 
 pub fn pause(self: *Self) !void {
@@ -287,6 +307,43 @@ pub fn pause(self: *Self) !void {
         },
         else => {},
     }
+}
+
+pub fn paused(self: *Self) bool {
+    return switch (self.state) {
+        .paused_moving, .paused_cooking, .paused_cooling => true,
+        else => false,
+    };
+}
+
+pub fn finished(self: *Self) bool {
+    return switch (self.state) {
+        .finished => true,
+        else => false,
+    };
+}
+
+pub fn writeState(self: *Self) void {
+    const p: *SavedState = @ptrCast(self.saved_state);
+    p.* = .{
+        .x_dir = self.x_dir,
+        .y_dir = self.y_dir,
+        .axis = self.axis,
+        .x = self.x,
+        .y = self.y,
+        .steps = self.steps,
+    };
+}
+
+pub fn restoreState(self: *Self) void {
+    const p: *SavedState = @ptrCast(self.saved_state);
+    self.x_dir = p.x_dir;
+    self.y_dir = p.y_dir;
+    self.axis = p.axis;
+    self.x = p.x;
+    self.y = p.y;
+    self.steps = p.steps;
+    self.state = .restored_state;
 }
 
 pub fn reset(self: *Self) !void {

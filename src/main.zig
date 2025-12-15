@@ -9,6 +9,7 @@ const Relais = @import("Relais.zig");
 const Buttons = @import("tui/Buttons.zig");
 const DriveControlUI = @import("DriveControlUI.zig");
 const DriveControlGotoTestUI = @import("DriveControlGotoTestUI.zig");
+const PosControl = @import("PosControl.zig");
 const PosControlUI = @import("PosControlUI.zig");
 const CookTime = @import("CookTime.zig");
 const CookTimeUI = @import("CookTimeUI.zig");
@@ -256,6 +257,16 @@ var drive_y_ui = DriveControlUI.create(&IO.drive_y_control);
 var drive_x_goto_test_ui = DriveControlGotoTestUI.create(&IO.drive_x_goto_test, &IO.drive_x_control);
 var drive_y_goto_test_ui = DriveControlGotoTestUI.create(&IO.drive_y_goto_test, &IO.drive_y_control);
 var pos_ui = PosControlUI.create(&IO.pos_control, &IO.drive_x_control, &IO.drive_y_control);
+var pb_save_pos_state = ClickButton(PosControl){
+    .ref = &IO.pos_control,
+    .enabled = PosControl.paused,
+    .clicked = PosControl.writeState,
+};
+var pb_restore_pos_state = ClickButton(PosControl){
+    .ref = &IO.pos_control,
+    .enabled = PosControl.finished,
+    .clicked = PosControl.restoreState,
+};
 
 const items: []const Item = &.{
     .{
@@ -308,7 +319,7 @@ const items: []const Item = &.{
             .str = " pos control\n",
             .items = pos_ui.ui(),
         } },
-        .{ .label = "Save cfg: " },
+        .{ .label = "Save: " },
         .{ .value = pb_save_config.value(.{}) },
         .{ .label = "\n" },
         .{ .popup = .{
@@ -319,6 +330,12 @@ const items: []const Item = &.{
             .str = " cook time\n",
             .items = cook_time_ui.ui(),
         } },
+        .{ .label = "restore pos:" },
+        .{ .value = pb_restore_pos_state.value(.{}) },
+        .{ .label = "\n" },
+        .{ .label = "store pos:" },
+        .{ .value = pb_save_pos_state.value(.{}) },
+        .{ .label = "\n" },
         .{ .label = "skip cook: " },
         .{ .value = skip_cooking.value(.{ .behaviour = .toggle_button }) },
     } } },

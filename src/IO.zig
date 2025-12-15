@@ -203,6 +203,7 @@ pub var pos_control = PosControl{
         };
     },
     .skip_cooking = &skip_cooking,
+    .saved_state = &Config.values.pos_state,
 };
 
 pub fn init() !void {
