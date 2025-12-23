@@ -26,7 +26,7 @@ pub fn update() void {
     const humidity = &Config.values.humidity;
     const depth = &Config.values.penetration_depth_cm;
     const cooking = &Config.values.cooking_time_dm;
-    const cooling = &Config.values.cooking_time_dm;
+    const cooling = &Config.values.cooling_time_dm;
     if (use.*) {
         cooking.* = mapping[@intFromEnum(humidity.*)][@min(max_depth, depth.*)];
         cooling.* = cooling_time(cooking.*);

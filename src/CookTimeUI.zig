@@ -41,10 +41,18 @@ pub fn create(use_mapping: *bool, humidity: *CookTime.Humidity, depth: *u8, cook
 pub fn ui(self: *Self) []const Item {
     return &.{
         .{ .label = "use map " },
-        .{ .value = self.use_mapping.value(.{}) }, // 3
+        .{ .value = self.use_mapping.value(.{ .behaviour = .toggle_button }) }, // 3
         .{ .label = "\n" },
         .{ .label = "humidity:" },
         .{ .value = self.humidity.value(.rw) },
         .{ .label = "\n" },
+        .{ .label = "depth:" },
+        .{ .value = self.depth.value() },
+        .{ .label = "\n" },
+        .{ .label = "cook t dm:" },
+        .{ .value = self.cooking_time.value() },
+        .{ .label = "\n" },
+        .{ .label = "paus t dm:" },
+        .{ .value = self.cooling_time.value() },
     };
 }

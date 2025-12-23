@@ -62,7 +62,7 @@ pub fn ui(self: *Self) []const Item {
 
 fn startEnabled(pc: *PosControl) bool {
     return switch (pc.state) {
-        .finished, .paused_moving, .paused_cooking, .paused_cooling => true,
+        .finished, .paused_moving, .paused_cooking, .paused_cooling, .restored_state => true,
         else => false,
     };
 }
@@ -81,7 +81,7 @@ fn pauseClicked(pc: *PosControl) void {
 }
 fn resetEnabled(pc: *PosControl) bool {
     return switch (pc.state) {
-        .paused_moving, .paused_cooking, .paused_cooling => true,
+        .paused_moving, .paused_cooking, .paused_cooling, .restored_state => true,
         else => false,
     };
 }
